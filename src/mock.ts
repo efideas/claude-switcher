@@ -37,6 +37,10 @@ export function installMockIfNeeded() {
       return "launched";
     },
     read_icon: () => "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#8b5cf6"/></svg>'),
+    app_info: () => ({ name: "Claude Switcher", version: "0.0.0-dev", author: "Juan Manuel", repoUrl: "https://github.com/efideas/claude-switcher" }),
+    "plugin:event|listen": () => Math.floor(Math.random() * 1e6),
+    "plugin:event|unlisten": () => null,
+    "plugin:opener|open_url": () => null,
     "plugin:dialog|open": () => null,
     "plugin:opener|open_path": () => null,
   };

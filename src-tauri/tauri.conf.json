@@ -37,6 +37,11 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "efideas",
+    "copyright": "Copyright 2026 Juan Manuel",
+    "homepage": "https://github.com/efideas/claude-switcher",
+    "license": "MIT",
+    "longDescription": "Opens several Claude Desktop instances, one per organization or account, each with its own data folder."
   }
 }

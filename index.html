@@ -94,10 +94,36 @@
           <small id="s-config" class="muted"></small>
         </div>
 
+        <div class="field">
+          <span>About</span>
+          <div class="btn-row">
+            <button type="button" id="btn-about" class="btn">About Claude Switcher</button>
+          </div>
+        </div>
+
         <div class="dlg-actions">
           <span class="spacer"></span>
           <button type="button" id="btn-settings-cancel" class="btn ghost">Cancel</button>
           <button type="submit" class="btn primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- About -->
+    <dialog id="dlg-about" class="about">
+      <form method="dialog">
+        <img src="/icon.png" alt="" class="about-icon" width="72" height="72" />
+        <h2 id="about-name">Claude Switcher</h2>
+        <p id="about-version" class="muted">Version</p>
+        <p class="about-desc">Opens several Claude Desktop instances, one per organization or account.</p>
+        <p class="about-meta">
+          <span>Author: <strong id="about-author"></strong></span>
+          <a id="about-link" href="#"></a>
+        </p>
+        <p class="about-note muted">Unofficial. Not affiliated with Anthropic.</p>
+        <div class="dlg-actions">
+          <span class="spacer"></span>
+          <button type="submit" class="btn primary">Close</button>
         </div>
       </form>
     </dialog>

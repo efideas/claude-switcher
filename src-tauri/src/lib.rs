@@ -6,8 +6,19 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
-use tauri::{AppHandle, Manager};
+use tauri::{
+    AppHandle, Emitter, Manager, WindowEvent,
+    image::Image,
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    tray::TrayIconBuilder,
+};
+
+const APP_NAME: &str = "Claude Switcher";
+const AUTHOR: &str = "Juan Manuel";
+const REPO_URL: &str = "https://github.com/efideas/claude-switcher";
+const TRAY_ID: &str = "main-tray";
 
 const PALETTE: [&str; 8] = [
     "#e5533d", "#e0a526", "#3fb950", "#2fb3a8", "#3b82f6", "#8b5cf6", "#ec4899", "#f97316",
@@ -372,7 +383,9 @@ fn load_config(app: AppHandle) -> Result<Config, String> {
 
 #[tauri::command]
 fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
-    write_config(&app, &config)
+    write_config(&app, &config)?;
+    refresh_tray(&app, &running_map(&config));
+    Ok(())
 }
 
 #[tauri::command]
@@ -381,8 +394,28 @@ fn import_instances(app: AppHandle) -> Result<Config, String> {
     let repaired = repair_ids(&mut config);
     if import_existing(&mut config) || repaired {
         write_config(&app, &config)?;
+        refresh_tray(&app, &running_map(&config));
     }
     Ok(config)
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    pub name: String,
+    pub version: String,
+    pub author: String,
+    pub repo_url: String,
+}
+
+#[tauri::command]
+fn app_info() -> AppInfo {
+    AppInfo {
+        name: APP_NAME.into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        author: AUTHOR.into(),
+        repo_url: REPO_URL.into(),
+    }
 }
 
 #[tauri::command]
@@ -493,11 +526,197 @@ fn read_icon(path: String) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{b64}"))
 }
 
+// ---------- tray, window and background watcher ----------
+
+/// Tray menu: one entry per instance (a filled dot marks the running ones), then app actions.
+fn build_tray_menu(app: &AppHandle, running: &HashMap<String, u32>) -> tauri::Result<Menu<tauri::Wry>> {
+    let config = read_config(app).unwrap_or_default();
+    let menu = Menu::new(app)?;
+    if config.instances.is_empty() {
+        menu.append(&MenuItem::with_id(app, "none", "No instances yet", false, None::<&str>)?)?;
+    }
+    for inst in &config.instances {
+        let marker = if running.contains_key(&inst.id) { "●" } else { "○" };
+        let item = MenuItem::with_id(
+            app,
+            format!("inst:{}", inst.id),
+            format!("{marker}  {}", inst.name),
+            true,
+            None::<&str>,
+        )?;
+        menu.append(&item)?;
+    }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "show", format!("Open {APP_NAME}"), true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "about", format!("About {APP_NAME}"), true, None::<&str>)?)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "quit", format!("Quit {APP_NAME}"), true, None::<&str>)?)?;
+    Ok(menu)
+}
+
+fn refresh_tray(app: &AppHandle, running: &HashMap<String, u32>) {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        if let Ok(menu) = build_tray_menu(app, running) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+}
+
+fn show_main_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Closing the window keeps the app alive in the tray. On macOS the Dock icon goes away too.
+fn hide_main_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
+    }
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+}
+
+fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
+    // macOS wants a monochrome template image (it tints it for light/dark menu bars);
+    // Windows and Linux show the color icon.
+    let (bytes, template): (&[u8], bool) = if cfg!(target_os = "macos") {
+        (include_bytes!("../icons/tray/tray-template@2x.png"), true)
+    } else {
+        (include_bytes!("../icons/tray/tray-color.png"), false)
+    };
+    let icon = Image::from_bytes(bytes)?;
+    let menu = build_tray_menu(app, &HashMap::new())?;
+    TrayIconBuilder::with_id(TRAY_ID)
+        .icon(icon)
+        .icon_as_template(template)
+        .tooltip(APP_NAME)
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => show_main_window(app),
+            "about" => {
+                show_main_window(app);
+                let _ = app.emit("open-about", ());
+            }
+            "quit" => app.exit(0),
+            id if id.starts_with("inst:") => {
+                let id = id["inst:".len()..].to_string();
+                let app = app.clone();
+                // Launching shells out (ps/open); keep it off the UI thread.
+                std::thread::spawn(move || {
+                    if let Err(e) = launch_instance(app.clone(), id) {
+                        let _ = app.emit("launch-error", e);
+                    }
+                });
+            }
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
+}
+
+/// Polls the process list and, when the set of running instances changes,
+/// updates the tray menu and tells the window.
+fn spawn_running_watcher(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut last: Vec<String> = Vec::new();
+        loop {
+            if let Ok(config) = read_config(&app) {
+                let map = running_map(&config);
+                let mut ids: Vec<String> = map.keys().cloned().collect();
+                ids.sort();
+                if ids != last {
+                    last = ids.clone();
+                    refresh_tray(&app, &map);
+                    let _ = app.emit("running-changed", ids);
+                }
+            }
+            std::thread::sleep(Duration::from_secs(3));
+        }
+    });
+}
+
+/// macOS app menu with an About panel that shows the author and the repository,
+/// plus the Edit items the text fields need.
+#[cfg(target_os = "macos")]
+fn setup_app_menu(app: &AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{AboutMetadata, Submenu};
+    let about = AboutMetadata {
+        name: Some(APP_NAME.into()),
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        authors: Some(vec![AUTHOR.into()]),
+        website: Some(REPO_URL.into()),
+        website_label: Some("github.com/efideas/claude-switcher".into()),
+        copyright: Some(format!("Copyright 2026 {AUTHOR}")),
+        license: Some("MIT".into()),
+        ..Default::default()
+    };
+    let app_menu = Submenu::with_items(
+        app,
+        APP_NAME,
+        true,
+        &[
+            &PredefinedMenuItem::about(app, Some(&format!("About {APP_NAME}")), Some(about))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window_menu = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    let menu = Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            #[cfg(target_os = "macos")]
+            setup_app_menu(&handle)?;
+            setup_tray(&handle)?;
+            spawn_running_watcher(handle);
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                hide_main_window(window.app_handle());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_environment,
             load_config,
@@ -506,7 +725,8 @@ pub fn run() {
             suggest_dir,
             running_instances,
             launch_instance,
-            read_icon
+            read_icon,
+            app_info
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

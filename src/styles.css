@@ -263,3 +263,13 @@ input[type="text"]:focus { outline: none; border-color: var(--accent); }
   z-index: 10;
 }
 .toast.error { background: var(--danger); color: #fff; }
+
+/* About */
+dialog.about form { align-items: center; text-align: center; gap: 8px; }
+.about-icon { border-radius: 18px; }
+.about-desc { margin: 0; max-width: 300px; }
+.about-meta { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 0; }
+.about-meta a { color: var(--accent); text-decoration: none; cursor: pointer; }
+.about-meta a:hover { text-decoration: underline; }
+.about-note { margin: 0; font-size: 12px; }
+dialog.about .dlg-actions { width: 100%; }

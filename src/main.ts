@@ -2,8 +2,9 @@ import { installMockIfNeeded } from "./mock";
 installMockIfNeeded();
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
 type Instance = {
   id: string;
@@ -16,6 +17,13 @@ type Instance = {
 type Config = {
   claudePath: string | null;
   instances: Instance[];
+};
+
+type AppInfo = {
+  name: string;
+  version: string;
+  author: string;
+  repoUrl: string;
 };
 
 type Environment = {
@@ -36,7 +44,6 @@ let running = new Set<string>();
 let editing: Instance | null = null; // null => creating
 let draft: Instance | null = null;
 let dirTouched = false;
-let pollTimer: number | undefined;
 
 // ---------- helpers ----------
 
@@ -159,13 +166,16 @@ async function launch(inst: Instance, card?: HTMLElement) {
   }
 }
 
+function applyRunning(ids: string[]) {
+  const next = new Set(ids);
+  const changed = next.size !== running.size || [...next].some((id) => !running.has(id));
+  running = next;
+  if (changed) render();
+}
+
 async function refreshRunning() {
   try {
-    const ids = await invoke<string[]>("running_instances");
-    const next = new Set(ids);
-    const changed = next.size !== running.size || [...next].some((id) => !running.has(id));
-    running = next;
-    if (changed) render();
+    applyRunning(await invoke<string[]>("running_instances"));
   } catch {
     /* ignore polling errors */
   }
@@ -361,6 +371,27 @@ async function openRoot() {
   }
 }
 
+// ---------- about ----------
+
+async function openAbout() {
+  try {
+    const info = await invoke<AppInfo>("app_info");
+    $("#about-name").textContent = info.name;
+    $("#about-version").textContent = `Version ${info.version}`;
+    $("#about-author").textContent = info.author;
+    const link = $<HTMLAnchorElement>("#about-link");
+    link.textContent = info.repoUrl.replace(/^https?:\/\//, "");
+    link.onclick = (e) => {
+      e.preventDefault();
+      openUrl(info.repoUrl).catch((err) => toast(String(err), true));
+    };
+  } catch (e) {
+    toast(String(e), true);
+  }
+  for (const d of document.querySelectorAll<HTMLDialogElement>("dialog[open]")) d.close();
+  $<HTMLDialogElement>("#dlg-about").showModal();
+}
+
 // ---------- init ----------
 
 async function init() {
@@ -372,7 +403,10 @@ async function init() {
   }
   render();
   await refreshRunning();
-  pollTimer = window.setInterval(refreshRunning, 3000);
+  // The backend watches the process list and pushes changes (it also keeps the tray menu current).
+  listen<string[]>("running-changed", (e) => applyRunning(e.payload)).catch(() => {});
+  listen<string>("launch-error", (e) => toast(e.payload, true)).catch(() => {});
+  listen("open-about", () => openAbout()).catch(() => {});
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refreshRunning();
   });
@@ -398,6 +432,7 @@ async function init() {
   $("#btn-pick-claude").addEventListener("click", pickClaude);
   $("#btn-import").addEventListener("click", importInstances);
   $("#btn-open-root").addEventListener("click", openRoot);
+  $("#btn-about").addEventListener("click", openAbout);
 
   // No context menu anywhere: the webview's native menu (reload, inspect, copy) has no use here.
   document.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -414,7 +449,6 @@ async function init() {
     }
   });
 
-  void pollTimer;
 }
 
 window.addEventListener("DOMContentLoaded", init);
