@@ -9,10 +9,10 @@ export function installMockIfNeeded() {
   const config = {
     claudePath: null as string | null,
     instances: [
-      { id: "a", name: "Pepsi", dir: "/Users/demo/.claude-instances/pepsi", icon: null, color: "#3b82f6" },
+      { id: "a", name: "Personal", dir: "/Users/demo/.claude-instances/personal", icon: null, color: "#3b82f6" },
       { id: "b", name: "Acme", dir: "/Users/demo/.claude-instances/acme", icon: null, color: "#e5533d" },
-      { id: "c", name: "Shein", dir: "/Users/demo/.claude-instances/shein", icon: null, color: "#1a1a1a" },
-      { id: "d", name: "Amazon", dir: "/Users/demo/.claude-instances/amazon", icon: null, color: "#e0a526" },
+      { id: "c", name: "Globex", dir: "/Users/demo/.claude-instances/globex", icon: null, color: "#8b5cf6" },
+      { id: "d", name: "Initech", dir: "/Users/demo/.claude-instances/initech", icon: null, color: "#e0a526" },
     ],
   };
   const running = new Set<string>(["b"]);

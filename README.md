@@ -4,6 +4,10 @@ A small desktop launcher that opens several Claude Desktop instances, one per or
 
 > Unofficial. Not affiliated with or endorsed by Anthropic. Claude is a trademark of Anthropic, PBC.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="Claude Switcher main window with four instance cards" width="480">
+</p>
+
 ## Why
 
 Claude Desktop signs in to one account at a time. If you belong to several organizations, you log out and back in every time you switch. The app is built on Electron, which accepts the standard Chromium flag `--user-data-dir`. Point it at a different folder and you get an independent copy of Claude with its own login, chat history and connectors.
@@ -23,6 +27,10 @@ That is all it does. It never touches the Claude app itself, your `~/.claude` fo
 - Imports any folders already present in `~/.claude-instances` on first run.
 - Detects the Claude install path on both platforms; you can override it in Settings.
 - Configuration lives in a single `config.json` under the OS app-config directory. The path is shown in Settings.
+
+## Privacy
+
+Claude Switcher stores no credentials. It never sees your password, session cookies or API tokens: you sign in inside Claude Desktop itself, exactly as you would without the launcher, and Claude keeps that session in the data folder of that instance. The only file the launcher writes is its own `config.json`, which holds the name, folder path, color and optional icon of each instance. It makes no network requests.
 
 ## Install
 
@@ -56,40 +64,10 @@ Run the `.exe` installer (NSIS) or the `.msi`. Windows SmartScreen may warn that
 - When you sign in to a new instance for the first time, close the other Claude windows first. The login deep link always lands in whichever Claude process is already running.
 - When Claude updates itself it may relaunch without the flag and land in the default profile. Quit it and open it again from Claude Switcher.
 
-## Development
+## Development and distribution
 
-Requirements: Node 20 or newer, a stable Rust toolchain, and the Tauri 2 prerequisites for your OS (Xcode Command Line Tools on macOS; Visual Studio Build Tools and WebView2 on Windows).
-
-```bash
-npm install
-npm run tauri dev      # run with hot reload
-npm run tauri build    # produce .app/.dmg on macOS or .exe/.msi on Windows
-npm run dev            # frontend only, in a browser, with a mocked backend
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
-Builds are platform specific: a Mac produces the macOS bundles, a Windows machine produces the installers. The GitHub Actions workflow in `.github/workflows/release.yml` builds both when you push a tag that starts with `v` and attaches the artifacts to a draft release.
-
-### Project layout
-
-```
-index.html            UI markup
-src/main.ts           UI logic (cards, dialogs, polling of running instances)
-src/mock.ts           in-browser mock of the Tauri bridge for frontend work
-src/styles.css        theme, light and dark
-src-tauri/src/lib.rs  commands: config, launch, running-process detection, icons
-design/               icon sources
-```
-
-## Distribution
-
-The repository starts private, so only collaborators can see its Releases. The options below are in order of effort.
-
-1. **GitHub Releases.** Already wired up by the workflow. Tag `v0.2.0`, wait for the three jobs, publish the draft. Works as long as the people installing have access to the repository, or the repository is public.
-2. **Homebrew tap (macOS).** Done: [efideas/homebrew-tap](https://github.com/efideas/homebrew-tap) holds the cask, and users run `brew install --cask efideas/tap/claude-switcher`. After each release, bump `version` and both `sha256` values in `Casks/claude-switcher.rb`; the tap README has the steps.
-3. **winget or Scoop (Windows).** Scoop needs a public bucket repository with a manifest pointing at the `.exe`. winget needs a pull request to `microsoft/winget-pkgs` per version and a code-signed installer is strongly recommended.
-4. **Code signing.** Without it, macOS shows the Gatekeeper warning and Windows shows SmartScreen. Signing on macOS needs an Apple Developer account (99 USD per year) plus notarization, which Tauri's bundler can do in CI with the `APPLE_*` secrets. Windows needs an OV or EV certificate from a CA (roughly 200 to 400 USD per year). Signing is what turns a "friends and colleagues" tool into something you can hand to anyone.
-5. **In-app updates.** Tauri ships an updater plugin. Once signing is in place it can check the GitHub release feed and install new versions from inside the app.
+- [docs/development.md](docs/development.md): requirements, commands, and the project layout.
+- [docs/distribution.md](docs/distribution.md): releases, the Homebrew tap, Windows package managers, code signing and in-app updates.
 
 ## Limitations
 

@@ -132,11 +132,6 @@ function render() {
         launch(inst, card);
       }
     });
-    card.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      openInstanceDialog(inst);
-    });
-
     grid.appendChild(card);
   });
 
@@ -403,6 +398,9 @@ async function init() {
   $("#btn-pick-claude").addEventListener("click", pickClaude);
   $("#btn-import").addEventListener("click", importInstances);
   $("#btn-open-root").addEventListener("click", openRoot);
+
+  // No context menu anywhere: the webview's native menu (reload, inspect, copy) has no use here.
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
 
   // Keyboard: 1-9 launch the Nth instance when no dialog is open.
   document.addEventListener("keydown", (e) => {
