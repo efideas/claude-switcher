@@ -30,6 +30,16 @@ Download the latest build from the [Releases](../../releases) page.
 
 ### macOS
 
+Install with Homebrew:
+
+```bash
+brew install --cask efideas/tap/claude-switcher
+```
+
+The cask clears the Gatekeeper quarantine flag for you, since the app is not notarized yet. To remove the app and its data later, run `brew uninstall --zap --cask claude-switcher`.
+
+Or install by hand:
+
 1. Open the `.dmg` and drag Claude Switcher to Applications.
 2. The app is not notarized yet, so the first launch is blocked by Gatekeeper. Right-click the app, choose Open, then Open again. You only need to do this once. The equivalent command is:
 
@@ -76,7 +86,7 @@ design/               icon sources
 The repository starts private, so only collaborators can see its Releases. The options below are in order of effort.
 
 1. **GitHub Releases.** Already wired up by the workflow. Tag `v0.2.0`, wait for the three jobs, publish the draft. Works as long as the people installing have access to the repository, or the repository is public.
-2. **Homebrew tap (macOS).** Create a public `efideas/homebrew-tap` repository with a cask that points at the `.dmg` in the release. Users then run `brew install --cask efideas/tap/claude-switcher`. The cask needs the download URL and the SHA-256 of each release, which the workflow can update.
+2. **Homebrew tap (macOS).** Done: [efideas/homebrew-tap](https://github.com/efideas/homebrew-tap) holds the cask, and users run `brew install --cask efideas/tap/claude-switcher`. After each release, bump `version` and both `sha256` values in `Casks/claude-switcher.rb`; the tap README has the steps.
 3. **winget or Scoop (Windows).** Scoop needs a public bucket repository with a manifest pointing at the `.exe`. winget needs a pull request to `microsoft/winget-pkgs` per version and a code-signed installer is strongly recommended.
 4. **Code signing.** Without it, macOS shows the Gatekeeper warning and Windows shows SmartScreen. Signing on macOS needs an Apple Developer account (99 USD per year) plus notarization, which Tauri's bundler can do in CI with the `APPLE_*` secrets. Windows needs an OV or EV certificate from a CA (roughly 200 to 400 USD per year). Signing is what turns a "friends and colleagues" tool into something you can hand to anyone.
 5. **In-app updates.** Tauri ships an updater plugin. Once signing is in place it can check the GitHub release feed and install new versions from inside the app.
