@@ -1,10 +1,11 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicU64, Ordering},
 };
 use tauri::{AppHandle, Manager};
 
@@ -77,12 +78,50 @@ fn slugify(name: &str) -> String {
     if out.is_empty() { "instance".into() } else { out }
 }
 
+/// Time-based id with a process-wide counter, so ids created back to back
+/// (for example during an import) never collide even when the clock does not tick.
 fn new_id() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("{nanos:x}")
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{nanos:x}{n:04x}")
+}
+
+/// An id that no instance in `config` uses yet.
+fn unique_id(config: &Config) -> String {
+    loop {
+        let id = new_id();
+        if !config.instances.iter().any(|i| i.id == id) {
+            return id;
+        }
+    }
+}
+
+/// Gives a fresh id to every instance whose id is empty or already taken by an
+/// earlier instance. Returns true when something changed. Older builds generated
+/// ids from the clock alone and could hand the same id to several instances.
+fn repair_ids(config: &mut Config) -> bool {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut changed = false;
+    for idx in 0..config.instances.len() {
+        let id = config.instances[idx].id.clone();
+        if !id.is_empty() && seen.insert(id) {
+            continue;
+        }
+        let fresh = loop {
+            let candidate = new_id();
+            if !seen.contains(&candidate) && !config.instances.iter().any(|i| i.id == candidate) {
+                break candidate;
+            }
+        };
+        seen.insert(fresh.clone());
+        config.instances[idx].id = fresh;
+        changed = true;
+    }
+    changed
 }
 
 fn humanize(slug: &str) -> String {
@@ -200,8 +239,9 @@ fn import_existing(config: &mut Config) -> bool {
         }
         let slug = p.file_name().and_then(|n| n.to_str()).unwrap_or("instance");
         let idx = config.instances.len() % PALETTE.len();
+        let id = unique_id(config);
         config.instances.push(Instance {
-            id: new_id(),
+            id,
             name: humanize(slug),
             dir: p.to_string_lossy().to_string(),
             icon: None,
@@ -322,7 +362,9 @@ fn get_environment(app: AppHandle) -> Result<Environment, String> {
 #[tauri::command]
 fn load_config(app: AppHandle) -> Result<Config, String> {
     let mut config = read_config(&app)?;
-    if config.instances.is_empty() && import_existing(&mut config) {
+    let repaired = repair_ids(&mut config);
+    let imported = config.instances.is_empty() && import_existing(&mut config);
+    if repaired || imported {
         write_config(&app, &config)?;
     }
     Ok(config)
@@ -336,7 +378,8 @@ fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
 #[tauri::command]
 fn import_instances(app: AppHandle) -> Result<Config, String> {
     let mut config = read_config(&app)?;
-    if import_existing(&mut config) {
+    let repaired = repair_ids(&mut config);
+    if import_existing(&mut config) || repaired {
         write_config(&app, &config)?;
     }
     Ok(config)
@@ -515,5 +558,45 @@ mod tests {
     #[test]
     fn live_process_scan_does_not_panic() {
         let _ = claude_processes();
+    }
+
+    #[test]
+    fn ids_generated_back_to_back_are_unique() {
+        let ids: HashSet<String> = (0..10_000).map(|_| new_id()).collect();
+        assert_eq!(ids.len(), 10_000);
+    }
+
+    #[test]
+    fn repair_ids_fixes_duplicates_and_empty_ids() {
+        let mut config = Config {
+            claude_path: None,
+            instances: vec![
+                inst("18decadf62f01ca8", "/a"),
+                inst("18decadf62f02090", "/b"),
+                inst("18decadf62f02090", "/c"),
+                inst("", "/d"),
+            ],
+        };
+        assert!(repair_ids(&mut config));
+        let ids: Vec<&str> = config.instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids[0], "18decadf62f01ca8", "untouched ids keep their value");
+        assert_eq!(ids[1], "18decadf62f02090", "the first holder of a duplicate keeps it");
+        assert_ne!(ids[2], "18decadf62f02090");
+        assert!(!ids[3].is_empty());
+        let unique: HashSet<&str> = ids.iter().copied().collect();
+        assert_eq!(unique.len(), 4);
+        // Folders are what identify instances; they must not move.
+        assert_eq!(config.instances[2].dir, "/c");
+    }
+
+    #[test]
+    fn repair_ids_leaves_healthy_config_alone() {
+        let mut config = Config {
+            claude_path: None,
+            instances: vec![inst("a", "/a"), inst("b", "/b")],
+        };
+        assert!(!repair_ids(&mut config));
+        assert_eq!(config.instances[0].id, "a");
+        assert_eq!(config.instances[1].id, "b");
     }
 }
