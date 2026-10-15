@@ -1,0 +1,94 @@
+name: Update Homebrew cask
+
+# Keeps Casks/claude-switcher.rb in efideas/homebrew-tap in sync with the
+# published release: downloads both macOS dmgs, computes their sha256 and
+# rewrites version + checksums in the cask.
+#
+# Requires the repository secret HOMEBREW_TAP_TOKEN: a fine-grained personal
+# access token scoped to efideas/homebrew-tap with "Contents: Read and write".
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to sync (for example v0.1.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update-cask:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAP_REPO: efideas/homebrew-tap
+      CASK_PATH: Casks/claude-switcher.rb
+    steps:
+      - name: Download macOS assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p assets
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir assets \
+            --pattern '*_aarch64.dmg' \
+            --pattern '*_x64.dmg'
+          ls -l assets
+
+      - name: Compute checksums
+        id: sums
+        run: |
+          arm_dmg=$(ls assets/*_aarch64.dmg)
+          intel_dmg=$(ls assets/*_x64.dmg)
+          [ -f "$arm_dmg" ] && [ -f "$intel_dmg" ]
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "arm=$(sha256sum "$arm_dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "intel=$(sha256sum "$intel_dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Check out the tap
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Rewrite version and checksums
+        working-directory: homebrew-tap
+        env:
+          VERSION: ${{ steps.sums.outputs.version }}
+          ARM: ${{ steps.sums.outputs.arm }}
+          INTEL: ${{ steps.sums.outputs.intel }}
+        run: |
+          sed -i -E \
+            -e "s/^([[:space:]]*version )\"[^\"]*\"/\1\"$VERSION\"/" \
+            -e "s/^([[:space:]]*sha256 arm:[[:space:]]*)\"[0-9a-f]{64}\"/\1\"$ARM\"/" \
+            -e "s/^([[:space:]]*intel:[[:space:]]*)\"[0-9a-f]{64}\"/\1\"$INTEL\"/" \
+            "$CASK_PATH"
+          grep -q "version \"$VERSION\"" "$CASK_PATH"
+          grep -q "\"$ARM\"" "$CASK_PATH"
+          grep -q "\"$INTEL\"" "$CASK_PATH"
+          ruby -c "$CASK_PATH"
+          git diff
+
+      - name: Commit and push
+        working-directory: homebrew-tap
+        env:
+          VERSION: ${{ steps.sums.outputs.version }}
+        run: |
+          if git diff --quiet; then
+            echo "Cask already at $VERSION, nothing to push"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CASK_PATH"
+          git commit -m "claude-switcher: update to $VERSION" \
+            -m "Synced from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          git push origin HEAD:main
