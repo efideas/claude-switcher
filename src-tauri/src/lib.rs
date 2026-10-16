@@ -44,6 +44,12 @@ fn tr(lang: Lang, key: &str) -> String {
         (Lang::Es, "open") => "Abrir Claude Switcher",
         (Lang::Es, "about") => "Acerca de Claude Switcher",
         (Lang::Es, "quit") => "Salir de Claude Switcher",
+        (Lang::Es, "new") => "Nueva instancia…",
+        (Lang::Es, "settings") => "Ajustes…",
+        (Lang::Es, "quitall") => "Cerrar todas las instancias",
+        (_, "new") => "New instance…",
+        (_, "settings") => "Settings…",
+        (_, "quitall") => "Quit all instances",
         (_, "default") => "Claude (default profile)",
         (_, "none") => "No instances yet",
         (_, "open") => "Open Claude Switcher",
@@ -58,7 +64,7 @@ const PALETTE: [&str; 8] = [
     "#e5533d", "#e0a526", "#3fb950", "#2fb3a8", "#3b82f6", "#8b5cf6", "#ec4899", "#f97316",
 ];
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance {
     pub id: String,
@@ -68,6 +74,12 @@ pub struct Instance {
     pub icon: Option<String>,
     #[serde(default)]
     pub color: String,
+    /// Fixed global-shortcut slot 1-9. None means "next free slot in list order".
+    #[serde(default)]
+    pub shortcut: Option<u8>,
+    /// Unix seconds of the last launch or focus from the switcher.
+    #[serde(default)]
+    pub last_used: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -83,6 +95,19 @@ pub struct Config {
     /// "system", "en" or "es". Drives the tray menu; the window reads the same value.
     #[serde(default = "default_language")]
     pub language: String,
+    /// Mirrors the autostart plugin state so the UI can show it without asking the OS.
+    #[serde(default)]
+    pub open_at_login: bool,
+    /// Tray icon visible. When off, closing the window quits the app instead of hiding it.
+    #[serde(default = "default_true")]
+    pub show_in_menu_bar: bool,
+    /// "grid" or "list".
+    #[serde(default = "default_view")]
+    pub view: String,
+}
+
+fn default_view() -> String {
+    "grid".into()
 }
 
 fn default_language() -> String {
@@ -100,6 +125,9 @@ impl Default for Config {
             instances: Vec::new(),
             shortcuts_enabled: true,
             language: default_language(),
+            open_at_login: false,
+            show_in_menu_bar: true,
+            view: default_view(),
         }
     }
 }
@@ -111,7 +139,27 @@ pub struct Environment {
     pub home: String,
     pub instances_root: String,
     pub detected_claude_path: Option<String>,
+    pub claude_version: Option<String>,
     pub config_file: String,
+}
+
+/// Version of the Claude Desktop install, when we can read it cheaply.
+fn claude_version(path: &str) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let out = Command::new("/usr/bin/plutil")
+            .args(["-extract", "CFBundleShortVersionString", "raw", &format!("{path}/Contents/Info.plist")])
+            .output()
+            .ok()?;
+        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        return (!v.is_empty()).then_some(v);
+    }
+    #[allow(unreachable_code)]
+    {
+        // Squirrel keeps the binary in AnthropicClaude\app-<version>\claude.exe.
+        let p = path.replace('\\', "/");
+        p.split('/').find_map(|seg| seg.strip_prefix("app-").map(|v| v.to_string()))
+    }
 }
 
 fn home_dir() -> PathBuf {
@@ -316,6 +364,7 @@ fn import_existing(config: &mut Config) -> bool {
             dir: p.to_string_lossy().to_string(),
             icon: None,
             color: PALETTE[idx].to_string(),
+            ..Default::default()
         });
         added = true;
     }
@@ -459,6 +508,10 @@ fn get_environment(app: AppHandle) -> Result<Environment, String> {
         home: home_dir().to_string_lossy().to_string(),
         instances_root: instances_root().to_string_lossy().to_string(),
         detected_claude_path: detect_claude_path(),
+        claude_version: read_config(&app)
+            .ok()
+            .and_then(|c| resolve_claude_path(&c).ok())
+            .and_then(|p| claude_version(&p)),
         config_file: config_file(&app)?.to_string_lossy().to_string(),
     })
 }
@@ -479,7 +532,45 @@ fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
     write_config(&app, &config)?;
     refresh_tray(&app, &running_map(&config));
     apply_shortcuts(&app, &config);
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_visible(config.show_in_menu_bar);
+    }
     Ok(())
+}
+
+/// Asks one process to quit gracefully (SIGTERM on Unix, taskkill without /F on Windows).
+fn terminate_pid(pid: u32) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = Command::new("taskkill");
+        cmd.args(["/PID", &pid.to_string()]);
+        hide_console(&mut cmd);
+        return cmd.status().map(|s| s.success()).unwrap_or(false);
+    }
+    #[allow(unreachable_code)]
+    Command::new("kill").args(["-TERM", &pid.to_string()]).status().map(|s| s.success()).unwrap_or(false)
+}
+
+/// Quits the Claude process of one instance (or the regular profile).
+#[tauri::command]
+fn quit_instance(app: AppHandle, id: String) -> Result<bool, String> {
+    let config = read_config(&app)?;
+    let map = running_map(&config);
+    Ok(map.get(&id).map(|pid| terminate_pid(*pid)).unwrap_or(false))
+}
+
+/// Gracefully quits every running Claude process we know about (SIGTERM / taskkill).
+#[tauri::command]
+fn quit_all_instances(app: AppHandle) -> Result<usize, String> {
+    let config = read_config(&app)?;
+    let map = running_map(&config);
+    let mut n = 0;
+    for pid in map.values() {
+        if terminate_pid(*pid) {
+            n += 1;
+        }
+    }
+    Ok(n)
 }
 
 #[tauri::command]
@@ -605,6 +696,8 @@ fn launch_instance(app: AppHandle, id: String) -> Result<String, String> {
         Some(format!("--user-data-dir={}", dir.display()))
     };
 
+    touch_last_used(&app, &id);
+
     // Already running? Focus instead of spawning a duplicate on the same profile.
     if let Some(pid) = running_map(&config).get(&id) {
         focus_pid(*pid);
@@ -632,6 +725,20 @@ fn launch_instance(app: AppHandle, id: String) -> Result<String, String> {
         cmd.spawn().map_err(|e| format!("Could not open Claude ({claude}): {e}"))?;
     }
     Ok("launched".into())
+}
+
+/// Stamps the instance with the current time and tells the window.
+fn touch_last_used(app: &AppHandle, id: &str) {
+    let Ok(mut config) = read_config(app) else { return };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Some(inst) = config.instances.iter_mut().find(|i| i.id == id) {
+        inst.last_used = Some(now);
+        let _ = write_config(app, &config);
+        let _ = app.emit("config-changed", &config);
+    }
 }
 
 fn focus_pid(pid: u32) {
@@ -702,6 +809,7 @@ fn build_tray_menu(app: &AppHandle, running: &HashMap<String, u32>) -> tauri::Re
     if config.instances.is_empty() {
         menu.append(&MenuItem::with_id(app, "none", tr(lang, "none"), false, None::<&str>)?)?;
     }
+    let accel = |n: Option<u8>| n.filter(|_| config.shortcuts_enabled).map(|n| format!("Ctrl+Alt+{n}"));
     for inst in &config.instances {
         let marker = if running.contains_key(&inst.id) { "●" } else { "○" };
         let item = MenuItem::with_id(
@@ -709,7 +817,7 @@ fn build_tray_menu(app: &AppHandle, running: &HashMap<String, u32>) -> tauri::Re
             format!("inst:{}", inst.id),
             format!("{marker}  {}", inst.name),
             true,
-            None::<&str>,
+            accel(slot_of(&config, &inst.id)).as_deref(),
         )?;
         menu.append(&item)?;
     }
@@ -720,12 +828,15 @@ fn build_tray_menu(app: &AppHandle, running: &HashMap<String, u32>) -> tauri::Re
         format!("inst:{DEFAULT_ID}"),
         format!("{marker}  {}", tr(lang, "default")),
         true,
-        None::<&str>,
+        accel(Some(0)).as_deref(),
     )?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "new", tr(lang, "new"), true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, "show", tr(lang, "open"), true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "settings", tr(lang, "settings"), true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, "about", tr(lang, "about"), true, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "quitall", tr(lang, "quitall"), !running.is_empty(), None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, "quit", tr(lang, "quit"), true, None::<&str>)?)?;
     Ok(menu)
 }
@@ -779,6 +890,20 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 show_main_window(app);
                 let _ = app.emit("open-about", ());
             }
+            "new" => {
+                show_main_window(app);
+                let _ = app.emit("new-instance", ());
+            }
+            "settings" => {
+                show_main_window(app);
+                let _ = app.emit("open-settings", ());
+            }
+            "quitall" => {
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    let _ = quit_all_instances(app);
+                });
+            }
             "quit" => app.exit(0),
             id if id.starts_with("inst:") => {
                 let id = id["inst:".len()..].to_string();
@@ -793,6 +918,11 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .build(app)?;
+    if let Ok(config) = read_config(app) {
+        if let Some(tray) = app.tray_by_id(TRAY_ID) {
+            let _ = tray.set_visible(config.show_in_menu_bar);
+        }
+    }
     Ok(())
 }
 
@@ -944,6 +1074,38 @@ fn setup_app_menu(app: &AppHandle) -> tauri::Result<()> {
 
 // ---------- global shortcuts ----------
 
+/// Shortcut slot (1-9) for every instance: explicit `shortcut` values first,
+/// then the remaining instances take the lowest free slots in list order.
+/// Instances beyond nine slots get none. The regular profile is always 0.
+fn effective_slots(config: &Config) -> Vec<(String, u8)> {
+    let mut taken: HashSet<u8> = HashSet::new();
+    let mut out: Vec<(String, u8)> = Vec::new();
+    for inst in &config.instances {
+        if let Some(n) = inst.shortcut {
+            if (1..=9).contains(&n) && taken.insert(n) {
+                out.push((inst.id.clone(), n));
+            }
+        }
+    }
+    for inst in &config.instances {
+        if out.iter().any(|(id, _)| id == &inst.id) {
+            continue;
+        }
+        if let Some(free) = (1..=9u8).find(|n| !taken.contains(n)) {
+            taken.insert(free);
+            out.push((inst.id.clone(), free));
+        }
+    }
+    out
+}
+
+fn slot_of(config: &Config, id: &str) -> Option<u8> {
+    if id == DEFAULT_ID {
+        return Some(0);
+    }
+    effective_slots(config).into_iter().find(|(i, _)| i == id).map(|(_, n)| n)
+}
+
 /// Ctrl+Alt+N (Control+Option+N on macOS): 1-9 for the Nth instance, 0 for the regular profile.
 fn shortcut_for(n: u8) -> tauri_plugin_global_shortcut::Shortcut {
     use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
@@ -970,8 +1132,9 @@ fn apply_shortcuts(app: &AppHandle, config: &Config) {
     if !config.shortcuts_enabled {
         return;
     }
-    let count = config.instances.len().min(9) as u8;
-    for n in 0..=count {
+    let mut slots: Vec<u8> = effective_slots(config).into_iter().map(|(_, n)| n).collect();
+    slots.push(0);
+    for n in slots {
         if let Err(e) = gs.register(shortcut_for(n)) {
             eprintln!("could not register shortcut Ctrl+Alt+{n}: {e}");
         }
@@ -997,8 +1160,8 @@ fn on_shortcut(app: &AppHandle, shortcut: &tauri_plugin_global_shortcut::Shortcu
     let id = if n == 0 {
         DEFAULT_ID.to_string()
     } else {
-        match config.instances.get(n - 1) {
-            Some(inst) => inst.id.clone(),
+        match effective_slots(&config).into_iter().find(|(_, s)| *s as usize == n) {
+            Some((id, _)) => id,
             None => return,
         }
     };
@@ -1015,6 +1178,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -1037,8 +1204,12 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                hide_main_window(window.app_handle());
+                let app = window.app_handle();
+                let tray_on = read_config(app).map(|c| c.show_in_menu_bar).unwrap_or(true);
+                if tray_on {
+                    api.prevent_close();
+                    hide_main_window(app);
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -1052,7 +1223,9 @@ pub fn run() {
             read_icon,
             app_info,
             export_config,
-            import_config
+            import_config,
+            quit_all_instances,
+            quit_instance
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1063,7 +1236,7 @@ mod tests {
     use super::*;
 
     fn inst(id: &str, dir: &str) -> Instance {
-        Instance { id: id.into(), name: id.into(), dir: dir.into(), icon: None, color: String::new() }
+        Instance { id: id.into(), name: id.into(), dir: dir.into(), ..Default::default() }
     }
 
     #[test]
@@ -1120,6 +1293,20 @@ mod tests {
     }
 
     #[test]
+    fn slots_respect_explicit_values_then_fill_gaps() {
+        let mut a = inst("a", "/a");
+        let b = inst("b", "/b");
+        let mut c = inst("c", "/c");
+        a.shortcut = Some(3);
+        c.shortcut = Some(1);
+        let config = Config { instances: vec![a, b, c], ..Default::default() };
+        let slots = effective_slots(&config);
+        assert_eq!(slots, vec![("a".to_string(), 3), ("c".to_string(), 1), ("b".to_string(), 2)]);
+        assert_eq!(slot_of(&config, "b"), Some(2));
+        assert_eq!(slot_of(&config, DEFAULT_ID), Some(0));
+    }
+
+    #[test]
     fn live_process_scan_does_not_panic() {
         let _ = claude_processes();
     }
@@ -1133,15 +1320,13 @@ mod tests {
     #[test]
     fn repair_ids_fixes_duplicates_and_empty_ids() {
         let mut config = Config {
-            claude_path: None,
-            shortcuts_enabled: true,
-            language: "en".into(),
             instances: vec![
                 inst("18decadf62f01ca8", "/a"),
                 inst("18decadf62f02090", "/b"),
                 inst("18decadf62f02090", "/c"),
                 inst("", "/d"),
             ],
+            ..Default::default()
         };
         assert!(repair_ids(&mut config));
         let ids: Vec<&str> = config.instances.iter().map(|i| i.id.as_str()).collect();
@@ -1158,10 +1343,8 @@ mod tests {
     #[test]
     fn repair_ids_leaves_healthy_config_alone() {
         let mut config = Config {
-            claude_path: None,
-            shortcuts_enabled: true,
-            language: "en".into(),
             instances: vec![inst("a", "/a"), inst("b", "/b")],
+            ..Default::default()
         };
         assert!(!repair_ids(&mut config));
         assert_eq!(config.instances[0].id, "a");

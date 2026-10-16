@@ -14,12 +14,13 @@
     "windows": [
       {
         "title": "Claude Switcher",
-        "width": 480,
-        "height": 560,
-        "minWidth": 320,
-        "minHeight": 360,
+        "width": 760,
+        "height": 572,
+        "minWidth": 640,
+        "minHeight": 480,
         "resizable": true,
-        "center": true
+        "center": true,
+        "dragDropEnabled": true
       }
     ],
     "security": {

@@ -8,126 +8,243 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark">✳</span>
-        <span class="brand-name">Claude Switcher</span>
+    <svg class="sprite" aria-hidden="true" width="0" height="0" style="position:absolute">
+      <symbol id="i-asterisk" viewBox="0 0 24 24"><path d="M12 6v12"/><path d="M17.196 9 6.804 15"/><path d="m6.804 9 10.392 6"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+      <symbol id="i-window" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 4v4"/><path d="M2 8h20"/><path d="M6 4v4"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+      <symbol id="i-image-plus" viewBox="0 0 24 24"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/><circle cx="9" cy="9" r="2"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-chevrons" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+    </svg>
+
+    <div class="app">
+      <header class="header">
+        <div class="heading">
+          <div class="app-mark"><svg><use href="#i-asterisk"/></svg></div>
+          <div class="heading-text">
+            <h1>Claude Switcher</h1>
+            <p id="subtitle" class="subtitle"></p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <label class="search">
+            <svg><use href="#i-search"/></svg>
+            <input id="search" type="search" data-i18n-placeholder="searchPlaceholder" autocomplete="off" spellcheck="false" />
+            <kbd id="search-kbd">⌘K</kbd>
+          </label>
+          <button id="btn-settings" class="icon-btn" data-i18n-title="settings"><svg><use href="#i-settings"/></svg></button>
+          <button id="btn-add" class="btn primary"><svg><use href="#i-plus"/></svg><span data-i18n="newInstance">New instance</span></button>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <div class="segmented" id="filter" role="tablist">
+          <button type="button" class="seg active" data-filter="all"><span data-i18n="filterAll">All</span><em id="count-all"></em></button>
+          <button type="button" class="seg" data-filter="running"><span data-i18n="filterRunning">Running</span><em id="count-running"></em></button>
+          <button type="button" class="seg" data-filter="stopped"><span data-i18n="filterStopped">Stopped</span><em id="count-stopped"></em></button>
+        </div>
+        <div class="segmented view-toggle" id="view-toggle">
+          <button type="button" class="seg icon active" data-view="grid" data-i18n-title="gridView"><svg><use href="#i-grid"/></svg></button>
+          <button type="button" class="seg icon" data-view="list" data-i18n-title="listView"><svg><use href="#i-list"/></svg></button>
+        </div>
       </div>
-      <div class="topbar-actions">
-        <button id="btn-settings" class="icon-btn" data-i18n-title="settings">⚙</button>
-        <button id="btn-add" class="icon-btn primary" data-i18n-title="addInstance">+</button>
-      </div>
-    </header>
 
-    <main>
-      <section id="grid" class="grid" aria-live="polite"></section>
-      <section id="empty" class="empty hidden">
-        <p class="empty-title" data-i18n="noInstances">No instances yet</p>
-        <p class="empty-hint" data-i18n-html="emptyHint"></p>
-      </section>
-    </main>
+      <main id="grid" class="grid" aria-live="polite"></main>
 
-    <footer class="statusbar">
-      <span id="status"></span>
-    </footer>
+      <footer class="statusbar">
+        <span id="status-dot" class="dot"></span>
+        <span id="status"></span>
+        <span class="spacer"></span>
+        <kbd>⌃⌥0–9</kbd>
+        <span class="muted" data-i18n="jumpHint">jump to any instance</span>
+      </footer>
+    </div>
 
-    <!-- Edit / create instance -->
-    <dialog id="dlg-instance">
+    <div id="card-menu" class="menu hidden" role="menu"></div>
+
+    <!-- New / edit instance -->
+    <dialog id="dlg-instance" class="sheet">
       <form method="dialog" id="form-instance">
-        <h2 id="dlg-instance-title">New instance</h2>
-
-        <div class="icon-row">
-          <div id="icon-preview" class="card-icon big"></div>
-          <div class="icon-row-actions">
-            <button type="button" id="btn-pick-icon" class="btn" data-i18n="chooseImage">Choose image…</button>
-            <button type="button" id="btn-clear-icon" class="btn ghost" data-i18n="remove">Remove</button>
+        <header class="sheet-header">
+          <div>
+            <h2 id="sheet-title">New instance</h2>
+            <p class="muted" data-i18n="sheetSubtitle"></p>
           </div>
-        </div>
-
-        <label>
-          <span data-i18n="name">Name</span>
-          <input id="f-name" type="text" required placeholder="Acme" autocomplete="off" />
-        </label>
-
-        <label>
-          <span data-i18n-html="dataFolder"></span>
-          <div class="input-with-btn">
-            <input id="f-dir" type="text" required spellcheck="false" />
-            <button type="button" id="btn-pick-dir" class="btn">…</button>
+          <button type="button" class="icon-btn ghost" id="btn-cancel" data-i18n-title="close"><svg><use href="#i-x"/></svg></button>
+        </header>
+        <div class="sheet-body">
+          <div class="preview" id="preview">
+            <div class="avatar xl" id="preview-avatar"></div>
+            <div class="preview-text">
+              <div class="preview-name" id="preview-name"></div>
+              <div class="preview-meta"><kbd id="preview-kbd"></kbd><span class="muted" data-i18n="livePreview"></span></div>
+            </div>
           </div>
-        </label>
 
-        <div class="field">
-          <span data-i18n="color">Color</span>
-          <div id="swatches" class="swatches"></div>
+          <label class="field">
+            <span data-i18n="name">Name</span>
+            <input id="f-name" type="text" required autocomplete="off" placeholder="Acme" />
+          </label>
+
+          <div class="field">
+            <span data-i18n="customImage">Custom image</span>
+            <div class="dropzone" id="dropzone">
+              <div class="drop-icon" id="drop-icon"><svg><use href="#i-image-plus"/></svg></div>
+              <div class="drop-copy">
+                <div><span data-i18n="dropImage"></span> <a href="#" id="btn-pick-icon" data-i18n="browse"></a></div>
+                <small class="muted" data-i18n="dropHint"></small>
+              </div>
+              <button type="button" id="btn-clear-icon" class="btn small ghost hidden" data-i18n="removeImage"></button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span data-i18n="color">Color</span>
+            <div class="swatches" id="swatches"></div>
+          </div>
+
+          <label class="field">
+            <span data-i18n="shortcut">Shortcut</span>
+            <div class="select-wrap">
+              <kbd id="slot-kbd"></kbd>
+              <select id="f-slot"></select>
+              <svg class="select-chevrons"><use href="#i-chevrons"/></svg>
+            </div>
+          </label>
+
+          <details class="advanced" id="advanced">
+            <summary>
+              <svg><use href="#i-chevron"/></svg>
+              <span data-i18n="advanced">Advanced</span>
+              <span class="muted" data-i18n="advancedHint"></span>
+            </summary>
+            <div class="field">
+              <div class="field-label"><span data-i18n="dataFolder">Data folder</span><code class="chip">--user-data-dir</code></div>
+              <div class="input-with-btn">
+                <div class="input-like">
+                  <svg><use href="#i-folder"/></svg>
+                  <input id="f-dir" type="text" required spellcheck="false" />
+                  <span id="dir-auto" class="badge accent" data-i18n="auto">AUTO</span>
+                </div>
+                <button type="button" id="btn-pick-dir" class="btn" data-i18n="choose">Choose…</button>
+              </div>
+              <small class="muted" data-i18n="folderHelp"></small>
+            </div>
+          </details>
         </div>
-
-        <div class="dlg-actions">
-          <button type="button" id="btn-delete" class="btn danger ghost" data-i18n="delete">Delete</button>
+        <footer class="sheet-footer">
+          <button type="button" id="btn-delete" class="btn danger ghost hidden"><svg><use href="#i-trash"/></svg><span data-i18n="delete"></span></button>
           <span class="spacer"></span>
-          <button type="button" id="btn-cancel" class="btn ghost" data-i18n="cancel">Cancel</button>
-          <button type="submit" id="btn-save" class="btn primary" data-i18n="save">Save</button>
-        </div>
+          <button type="button" id="btn-cancel-2" class="btn" data-i18n="cancel">Cancel</button>
+          <button type="submit" id="btn-save" class="btn primary"><svg id="btn-save-icon"><use href="#i-play"/></svg><span id="btn-save-label"></span></button>
+        </footer>
       </form>
     </dialog>
 
     <!-- Settings -->
-    <dialog id="dlg-settings">
+    <dialog id="dlg-settings" class="sheet settings">
       <form method="dialog" id="form-settings">
-        <h2 data-i18n="settings">Settings</h2>
+        <header class="sheet-header">
+          <h2 data-i18n="settings">Settings</h2>
+          <button type="button" class="icon-btn ghost" id="btn-settings-close" data-i18n-title="close"><svg><use href="#i-x"/></svg></button>
+        </header>
+        <div class="sheet-body">
+          <section>
+            <h3 data-i18n="secClaude"></h3>
+            <div class="group">
+              <div class="row">
+                <div class="app-icon"><svg><use href="#i-asterisk"/></svg></div>
+                <div class="copy">
+                  <div class="title-row"><strong>Claude.app</strong><span id="claude-badge" class="badge success"><svg><use href="#i-check"/></svg><span id="claude-badge-text"></span></span></div>
+                  <code id="claude-path" class="muted"></code>
+                </div>
+                <div class="control">
+                  <button type="button" id="btn-use-detected" class="btn small ghost hidden" data-i18n="useDetected"></button>
+                  <button type="button" id="btn-pick-claude" class="btn small" data-i18n="change"></button>
+                </div>
+              </div>
+            </div>
+          </section>
 
-        <label>
-          <span data-i18n="claudePath">Claude Desktop path</span>
-          <div class="input-with-btn">
-            <input id="s-claude" type="text" spellcheck="false" data-i18n-placeholder="autoDetect" />
-            <button type="button" id="btn-pick-claude" class="btn">…</button>
-          </div>
-          <small id="s-detected" class="muted"></small>
-        </label>
+          <section>
+            <h3 data-i18n="secGeneral"></h3>
+            <div class="group">
+              <div class="row">
+                <div class="copy"><strong data-i18n="language"></strong><span class="muted" data-i18n="languageDesc"></span></div>
+                <div class="control">
+                  <div class="select-wrap small">
+                    <select id="s-lang"><option value="system" data-i18n="langSystem">System</option><option value="en">English</option><option value="es">Español</option></select>
+                    <svg class="select-chevrons"><use href="#i-chevrons"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="copy"><strong data-i18n="openAtLogin"></strong><span class="muted" data-i18n="openAtLoginDesc"></span></div>
+                <div class="control"><label class="switch"><input type="checkbox" id="s-login" /><span></span></label></div>
+              </div>
+              <div class="row">
+                <div class="copy"><strong data-i18n="showInMenuBar"></strong><span class="muted" data-i18n="showInMenuBarDesc"></span></div>
+                <div class="control"><label class="switch"><input type="checkbox" id="s-tray" /><span></span></label></div>
+              </div>
+            </div>
+          </section>
 
-        <label>
-          <span data-i18n="language">Language</span>
-          <select id="s-lang">
-            <option value="system" data-i18n="langSystem">System</option>
-            <option value="en">English</option>
-            <option value="es">Español</option>
-          </select>
-        </label>
+          <section>
+            <h3 data-i18n="secShortcuts"></h3>
+            <div class="group">
+              <div class="row">
+                <div class="copy"><strong data-i18n="globalShortcuts"></strong><span class="muted" data-i18n="globalShortcutsDesc"></span></div>
+                <div class="control"><label class="switch"><input type="checkbox" id="s-shortcuts" /><span></span></label></div>
+              </div>
+              <div class="row">
+                <div class="copy"><strong data-i18n="switchToN"></strong><span class="muted" data-i18n="switchToNDesc"></span></div>
+                <div class="control kbds"><kbd>⌃</kbd><i>+</i><kbd>⌥</kbd><i>+</i><kbd>1</kbd><i>…</i><kbd>9</kbd></div>
+              </div>
+              <div class="row">
+                <div class="copy"><strong data-i18n="defaultClaudeProfile"></strong></div>
+                <div class="control kbds"><kbd>⌃</kbd><i>+</i><kbd>⌥</kbd><i>+</i><kbd>0</kbd></div>
+              </div>
+            </div>
+          </section>
 
-        <div class="field">
-          <span data-i18n="folders">Folders</span>
-          <div class="btn-row">
-            <button type="button" id="btn-import" class="btn" data-i18n="importFolders">Import from ~/.claude-instances</button>
-            <button type="button" id="btn-open-root" class="btn" data-i18n="openFolder">Open folder</button>
-          </div>
-          <small id="s-config" class="muted"></small>
-        </div>
+          <section>
+            <h3 data-i18n="secData"></h3>
+            <div class="group">
+              <div class="row">
+                <div class="copy"><strong data-i18n="instancesFolder"></strong><code id="s-root" class="muted"></code></div>
+                <div class="control">
+                  <button type="button" id="btn-import" class="btn small"><svg><use href="#i-download"/></svg><span data-i18n="importFolders"></span></button>
+                  <button type="button" id="btn-open-root" class="btn small"><svg><use href="#i-folder"/></svg><span data-i18n="reveal"></span></button>
+                </div>
+              </div>
+              <div class="row">
+                <div class="copy"><strong data-i18n="configFile"></strong><code id="s-config" class="muted"></code></div>
+                <div class="control"><button type="button" id="btn-open-config" class="btn small"><svg><use href="#i-folder"/></svg><span data-i18n="reveal"></span></button></div>
+              </div>
+              <div class="row">
+                <div class="copy"><strong data-i18n="backup"></strong><span class="muted" data-i18n="backupDesc"></span></div>
+                <div class="control">
+                  <button type="button" id="btn-import-json" class="btn small" data-i18n="importJson"></button>
+                  <button type="button" id="btn-export" class="btn small" data-i18n="exportJson"></button>
+                </div>
+              </div>
+            </div>
+          </section>
 
-        <label class="check">
-          <input id="s-shortcuts" type="checkbox" />
-          <span data-i18n-html="shortcutsLabel"></span>
-        </label>
-
-        <div class="field">
-          <span data-i18n="backup">Backup</span>
-          <div class="btn-row">
-            <button type="button" id="btn-export" class="btn" data-i18n="exportJson">Export JSON…</button>
-            <button type="button" id="btn-import-json" class="btn" data-i18n="importJson">Import JSON…</button>
-          </div>
-          <small class="muted" data-i18n="backupHint"></small>
-        </div>
-
-        <div class="field">
-          <span data-i18n="about">About</span>
-          <div class="btn-row">
-            <button type="button" id="btn-about" class="btn" data-i18n="aboutApp">About Claude Switcher</button>
-          </div>
-        </div>
-
-        <div class="dlg-actions">
-          <span class="spacer"></span>
-          <button type="button" id="btn-settings-cancel" class="btn ghost" data-i18n="cancel">Cancel</button>
-          <button type="submit" class="btn primary" data-i18n="save">Save</button>
+          <p class="settings-footer muted"><span id="settings-footer"></span> · <a href="#" id="btn-about" data-i18n="about"></a></p>
         </div>
       </form>
     </dialog>
@@ -140,7 +257,7 @@
         <p id="about-version" class="muted"></p>
         <p class="about-desc" data-i18n="aboutDesc"></p>
         <p class="about-meta">
-          <span><span data-i18n="author">Author:</span> <strong id="about-author"></strong></span>
+          <span><span data-i18n="author"></span> <strong id="about-author"></strong></span>
           <a id="about-link" href="#"></a>
         </p>
         <p class="about-note muted" data-i18n="unofficial"></p>
