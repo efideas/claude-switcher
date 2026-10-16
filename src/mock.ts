@@ -41,6 +41,10 @@ export function installMockIfNeeded() {
     "plugin:event|listen": () => Math.floor(Math.random() * 1e6),
     "plugin:event|unlisten": () => null,
     "plugin:opener|open_url": () => null,
+    export_config: () => config.instances.length,
+    import_config: () => ({ config, added: 0, skipped: config.instances.length }),
+    "plugin:dialog|save": () => null,
+    "plugin:dialog|ask": () => true,
     "plugin:dialog|open": () => null,
     "plugin:opener|open_path": () => null,
   };

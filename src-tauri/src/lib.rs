@@ -436,6 +436,65 @@ fn import_instances(app: AppHandle) -> Result<Config, String> {
     Ok(config)
 }
 
+/// Writes the current configuration as pretty JSON to `path` (a backup the user picked).
+#[tauri::command]
+fn export_config(app: AppHandle, path: String) -> Result<usize, String> {
+    let config = read_config(&app)?;
+    let raw = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    fs::write(&path, &raw).map_err(|e| format!("Could not write {path}: {e}"))?;
+    Ok(config.instances.len())
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub config: Config,
+    pub added: usize,
+    pub skipped: usize,
+}
+
+/// Loads a backup. With `replace` the file becomes the whole configuration;
+/// otherwise its instances are merged in, skipping folders that already exist.
+#[tauri::command]
+fn import_config(app: AppHandle, path: String, replace: bool) -> Result<ImportResult, String> {
+    let raw = fs::read_to_string(&path).map_err(|e| format!("Could not read {path}: {e}"))?;
+    let mut incoming: Config =
+        serde_json::from_str(&raw).map_err(|e| format!("Not a Claude Switcher backup: {e}"))?;
+    for inst in &incoming.instances {
+        if inst.name.trim().is_empty() || inst.dir.trim().is_empty() {
+            return Err("Backup has an instance without a name or folder.".into());
+        }
+    }
+    let (mut config, added, skipped) = if replace {
+        let n = incoming.instances.len();
+        (incoming, n, 0)
+    } else {
+        let mut current = read_config(&app)?;
+        let mut added = 0;
+        let mut skipped = 0;
+        for inst in incoming.instances.drain(..) {
+            let dup = current
+                .instances
+                .iter()
+                .any(|c| normalize_dir(&c.dir) == normalize_dir(&inst.dir));
+            if dup {
+                skipped += 1;
+            } else {
+                current.instances.push(inst);
+                added += 1;
+            }
+        }
+        if current.claude_path.is_none() {
+            current.claude_path = incoming.claude_path;
+        }
+        (current, added, skipped)
+    };
+    repair_ids(&mut config);
+    write_config(&app, &config)?;
+    refresh_tray(&app, &running_map(&config));
+    Ok(ImportResult { config, added, skipped })
+}
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {
@@ -784,7 +843,9 @@ pub fn run() {
             running_instances,
             launch_instance,
             read_icon,
-            app_info
+            app_info,
+            export_config,
+            import_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

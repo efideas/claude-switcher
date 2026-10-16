@@ -3,7 +3,7 @@ installMockIfNeeded();
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 
 type Instance = {
@@ -430,6 +430,68 @@ async function openRoot() {
   }
 }
 
+// ---------- backup ----------
+
+function backupFileName(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `claude-switcher-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
+}
+
+async function exportConfig() {
+  const path = await saveDialog({
+    title: "Export configuration",
+    defaultPath: backupFileName(),
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  if (typeof path !== "string") return;
+  try {
+    const n = await invoke<number>("export_config", { path });
+    toast(`Exported ${n} instance(s)`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+async function importConfig() {
+  const path = await openDialog({
+    multiple: false,
+    directory: false,
+    title: "Import configuration",
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+  if (typeof path !== "string") return;
+  const replace = !(await ask(
+    "Merge the backup into the current list, or replace the list with the backup?\n\nFolders that already exist are skipped when merging.",
+    { title: "Import configuration", kind: "warning", okLabel: "Merge", cancelLabel: "Replace" },
+  ));
+  if (replace) {
+    const sure = await ask("Replace all current instances with the backup? Data folders are not touched.", {
+      title: "Replace configuration",
+      kind: "warning",
+      okLabel: "Replace",
+      cancelLabel: "Cancel",
+    });
+    if (!sure) return;
+  }
+  try {
+    const result = await invoke<{ config: Config; added: number; skipped: number }>("import_config", {
+      path,
+      replace,
+    });
+    config = result.config;
+    render();
+    refreshRunning();
+    toast(
+      replace
+        ? `Imported ${result.added} instance(s)`
+        : `Imported ${result.added} instance(s), ${result.skipped} already present`,
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 // ---------- about ----------
 
 async function openAbout() {
@@ -492,6 +554,8 @@ async function init() {
   $("#btn-import").addEventListener("click", importInstances);
   $("#btn-open-root").addEventListener("click", openRoot);
   $("#btn-about").addEventListener("click", openAbout);
+  $("#btn-export").addEventListener("click", exportConfig);
+  $("#btn-import").addEventListener("click", importConfig);
 
   // No context menu anywhere: the webview's native menu (reload, inspect, copy) has no use here.
   document.addEventListener("contextmenu", (e) => e.preventDefault());
