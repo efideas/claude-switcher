@@ -8,6 +8,7 @@ export function installMockIfNeeded() {
 
   const config = {
     claudePath: null as string | null,
+    shortcutsEnabled: true,
     instances: [
       { id: "a", name: "Personal", dir: "/Users/demo/.claude-instances/personal", icon: null, color: "#3b82f6" },
       { id: "b", name: "Acme", dir: "/Users/demo/.claude-instances/acme", icon: null, color: "#e5533d" },

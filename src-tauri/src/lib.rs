@@ -39,13 +39,26 @@ pub struct Instance {
     pub color: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
     #[serde(default)]
     pub claude_path: Option<String>,
     #[serde(default)]
     pub instances: Vec<Instance>,
+    /// Ctrl+Alt+0..9 (Control+Option on macOS) bring instance N to the front from any app.
+    #[serde(default = "default_true")]
+    pub shortcuts_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config { claude_path: None, instances: Vec::new(), shortcuts_enabled: true }
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -422,6 +435,7 @@ fn load_config(app: AppHandle) -> Result<Config, String> {
 fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
     write_config(&app, &config)?;
     refresh_tray(&app, &running_map(&config));
+    apply_shortcuts(&app, &config);
     Ok(())
 }
 
@@ -492,6 +506,7 @@ fn import_config(app: AppHandle, path: String, replace: bool) -> Result<ImportRe
     repair_ids(&mut config);
     write_config(&app, &config)?;
     refresh_tray(&app, &running_map(&config));
+    apply_shortcuts(&app, &config);
     Ok(ImportResult { config, added, skipped })
 }
 
@@ -883,16 +898,96 @@ fn setup_app_menu(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+// ---------- global shortcuts ----------
+
+/// Ctrl+Alt+N (Control+Option+N on macOS): 1-9 for the Nth instance, 0 for the regular profile.
+fn shortcut_for(n: u8) -> tauri_plugin_global_shortcut::Shortcut {
+    use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+    let code = match n {
+        0 => Code::Digit0,
+        1 => Code::Digit1,
+        2 => Code::Digit2,
+        3 => Code::Digit3,
+        4 => Code::Digit4,
+        5 => Code::Digit5,
+        6 => Code::Digit6,
+        7 => Code::Digit7,
+        8 => Code::Digit8,
+        _ => Code::Digit9,
+    };
+    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), code)
+}
+
+/// Registers shortcuts for the current instances (or unregisters them all when disabled).
+fn apply_shortcuts(app: &AppHandle, config: &Config) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    let gs = app.global_shortcut();
+    let _ = gs.unregister_all();
+    if !config.shortcuts_enabled {
+        return;
+    }
+    let count = config.instances.len().min(9) as u8;
+    for n in 0..=count {
+        if let Err(e) = gs.register(shortcut_for(n)) {
+            eprintln!("could not register shortcut Ctrl+Alt+{n}: {e}");
+        }
+    }
+}
+
+fn on_shortcut(app: &AppHandle, shortcut: &tauri_plugin_global_shortcut::Shortcut) {
+    use tauri_plugin_global_shortcut::Code;
+    let n = match shortcut.key {
+        Code::Digit0 => 0,
+        Code::Digit1 => 1,
+        Code::Digit2 => 2,
+        Code::Digit3 => 3,
+        Code::Digit4 => 4,
+        Code::Digit5 => 5,
+        Code::Digit6 => 6,
+        Code::Digit7 => 7,
+        Code::Digit8 => 8,
+        Code::Digit9 => 9,
+        _ => return,
+    };
+    let Ok(config) = read_config(app) else { return };
+    let id = if n == 0 {
+        DEFAULT_ID.to_string()
+    } else {
+        match config.instances.get(n - 1) {
+            Some(inst) => inst.id.clone(),
+            None => return,
+        }
+    };
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if let Err(e) = launch_instance(app.clone(), id) {
+            let _ = app.emit("launch-error", e);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        on_shortcut(app, shortcut);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let handle = app.handle().clone();
             #[cfg(target_os = "macos")]
             setup_app_menu(&handle)?;
             setup_tray(&handle)?;
+            if let Ok(config) = read_config(&handle) {
+                apply_shortcuts(&handle, &config);
+            }
             spawn_running_watcher(handle);
             Ok(())
         })
@@ -995,6 +1090,7 @@ mod tests {
     fn repair_ids_fixes_duplicates_and_empty_ids() {
         let mut config = Config {
             claude_path: None,
+            shortcuts_enabled: true,
             instances: vec![
                 inst("18decadf62f01ca8", "/a"),
                 inst("18decadf62f02090", "/b"),
@@ -1018,6 +1114,7 @@ mod tests {
     fn repair_ids_leaves_healthy_config_alone() {
         let mut config = Config {
             claude_path: None,
+            shortcuts_enabled: true,
             instances: vec![inst("a", "/a"), inst("b", "/b")],
         };
         assert!(!repair_ids(&mut config));

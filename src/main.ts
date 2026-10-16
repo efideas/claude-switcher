@@ -17,6 +17,7 @@ type Instance = {
 type Config = {
   claudePath: string | null;
   instances: Instance[];
+  shortcutsEnabled: boolean;
 };
 
 type AppInfo = {
@@ -48,7 +49,7 @@ const DEFAULT_INSTANCE: Instance = {
   color: "#D97757",
 };
 
-let config: Config = { claudePath: null, instances: [] };
+let config: Config = { claudePath: null, instances: [], shortcutsEnabled: true };
 let env: Environment | null = null;
 let running = new Set<string>();
 let activeId: string | null = null; // instance that owns the frontmost Claude window
@@ -378,6 +379,7 @@ async function deleteInstance() {
 
 function openSettings() {
   $<HTMLInputElement>("#s-claude").value = config.claudePath ?? "";
+  $<HTMLInputElement>("#s-shortcuts").checked = config.shortcutsEnabled !== false;
   $("#s-detected").textContent = env?.detectedClaudePath
     ? `Detected: ${env.detectedClaudePath}`
     : "Claude Desktop was not detected automatically.";
@@ -401,6 +403,7 @@ async function saveSettings(e: Event) {
   e.preventDefault();
   const v = $<HTMLInputElement>("#s-claude").value.trim();
   config.claudePath = v || null;
+  config.shortcutsEnabled = $<HTMLInputElement>("#s-shortcuts").checked;
   try {
     await persist();
     $<HTMLDialogElement>("#dlg-settings").close();
