@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { ask, open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { resolveLang, setLang, t, type LangSetting } from "./i18n";
 
 type Instance = {
   id: string;
@@ -18,6 +19,7 @@ type Config = {
   claudePath: string | null;
   instances: Instance[];
   shortcutsEnabled: boolean;
+  language: LangSetting;
 };
 
 type AppInfo = {
@@ -49,7 +51,7 @@ const DEFAULT_INSTANCE: Instance = {
   color: "#D97757",
 };
 
-let config: Config = { claudePath: null, instances: [], shortcutsEnabled: true };
+let config: Config = { claudePath: null, instances: [], shortcutsEnabled: true, language: "system" };
 let env: Environment | null = null;
 let running = new Set<string>();
 let activeId: string | null = null; // instance that owns the frontmost Claude window
@@ -110,9 +112,7 @@ function buildDefaultCard(): HTMLElement {
   card.className = "card default" + (isRunning ? " running" : "") + (activeId === inst.id ? " active" : "");
   card.tabIndex = 0;
   card.dataset.id = inst.id;
-  card.title = isRunning
-    ? "Claude · regular profile · running"
-    : "Claude · regular profile (no --user-data-dir)";
+  card.title = isRunning ? t("defaultTitleRunning") : t("defaultTitle");
 
   const dot = document.createElement("span");
   dot.className = "card-dot";
@@ -131,7 +131,7 @@ function buildDefaultCard(): HTMLElement {
 
   const sub = document.createElement("div");
   sub.className = "card-sub";
-  sub.textContent = "default";
+  sub.textContent = t("defaultSub");
   card.appendChild(sub);
 
   const key = document.createElement("span");
@@ -164,7 +164,7 @@ function render() {
       "card" + (running.has(inst.id) ? " running" : "") + (activeId === inst.id ? " active" : "");
     card.tabIndex = 0;
     card.dataset.id = inst.id;
-    card.title = running.has(inst.id) ? `${inst.name} · running\n${inst.dir}` : `${inst.name}\n${inst.dir}`;
+    card.title = running.has(inst.id) ? `${inst.name} · ${t("running")}\n${inst.dir}` : `${inst.name}\n${inst.dir}`;
 
     const dot = document.createElement("span");
     dot.className = "card-dot";
@@ -186,7 +186,7 @@ function render() {
 
     const edit = document.createElement("button");
     edit.className = "card-edit";
-    edit.title = "Edit";
+    edit.title = t("edit");
     edit.textContent = "⋯";
     edit.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -209,8 +209,8 @@ function render() {
     config.instances.length === 0
       ? ""
       : n === 0
-        ? `${config.instances.length} instance(s) · none running`
-        : `${config.instances.length} instance(s) · ${n} running`,
+        ? t("statusNone", { n: config.instances.length })
+        : t("statusSome", { n: config.instances.length, r: n }),
   );
 }
 
@@ -218,7 +218,7 @@ async function launch(inst: Instance, card?: HTMLElement) {
   card?.classList.add("launching");
   try {
     const result = await invoke<string>("launch_instance", { id: inst.id });
-    toast(result === "focused" ? `${inst.name} is already open` : `Opening ${inst.name}…`);
+    toast(result === "focused" ? t("alreadyOpen", { name: inst.name }) : t("opening", { name: inst.name }));
     // Poll a few times quickly so the running dot appears without waiting for the slow timer.
     for (const ms of [800, 2000, 4000]) window.setTimeout(refreshRunning, ms);
   } catch (e) {
@@ -279,7 +279,7 @@ function openInstanceDialog(inst: Instance | null) {
     : { id: "", name: "", dir: "", icon: null, color: PALETTE[config.instances.length % PALETTE.length] };
   dirTouched = !!inst;
 
-  $("#dlg-instance-title").textContent = inst ? "Edit instance" : "New instance";
+  $("#dlg-instance-title").textContent = inst ? t("editInstance") : t("newInstance");
   $<HTMLInputElement>("#f-name").value = draft.name;
   $<HTMLInputElement>("#f-dir").value = draft.dir;
   $<HTMLButtonElement>("#btn-delete").classList.toggle("hidden", !inst);
@@ -307,7 +307,7 @@ async function pickDir() {
     directory: true,
     multiple: false,
     defaultPath: current || env?.instancesRoot,
-    title: "Instance data folder",
+    title: t("pickFolderTitle"),
   });
   if (typeof picked === "string") {
     $<HTMLInputElement>("#f-dir").value = picked;
@@ -319,8 +319,8 @@ async function pickIcon() {
   const picked = await openDialog({
     multiple: false,
     directory: false,
-    title: "Instance image",
-    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp"] }],
+    title: t("pickImageTitle"),
+    filters: [{ name: t("images"), extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp"] }],
   });
   if (typeof picked !== "string" || !draft) return;
   try {
@@ -336,11 +336,11 @@ async function saveInstance(e: Event) {
   if (!draft) return;
   const name = $<HTMLInputElement>("#f-name").value.trim();
   const dir = $<HTMLInputElement>("#f-dir").value.trim();
-  if (!name) return toast("Name is required", true);
-  if (!dir) return toast("Folder is required", true);
+  if (!name) return toast(t("nameRequired"), true);
+  if (!dir) return toast(t("folderRequired"), true);
 
   const clash = config.instances.find((i) => i.dir === dir && i.id !== draft!.id);
-  if (clash) return toast(`That folder is already used by "${clash.name}"`, true);
+  if (clash) return toast(t("folderInUse", { name: clash.name }), true);
 
   draft.name = name;
   draft.dir = dir;
@@ -365,9 +365,7 @@ async function saveInstance(e: Event) {
 
 async function deleteInstance() {
   if (!editing) return;
-  const ok = window.confirm(
-    `Remove "${editing.name}" from the list?\n\nThe data folder is not deleted:\n${editing.dir}`,
-  );
+  const ok = window.confirm(t("confirmRemove", { name: editing.name, dir: editing.dir }));
   if (!ok) return;
   config.instances = config.instances.filter((i) => i.id !== editing!.id);
   await persist();
@@ -380,10 +378,11 @@ async function deleteInstance() {
 function openSettings() {
   $<HTMLInputElement>("#s-claude").value = config.claudePath ?? "";
   $<HTMLInputElement>("#s-shortcuts").checked = config.shortcutsEnabled !== false;
+  $<HTMLSelectElement>("#s-lang").value = config.language ?? "system";
   $("#s-detected").textContent = env?.detectedClaudePath
-    ? `Detected: ${env.detectedClaudePath}`
-    : "Claude Desktop was not detected automatically.";
-  $("#s-config").textContent = env ? `Config: ${env.configFile}` : "";
+    ? t("detected", { path: env.detectedClaudePath })
+    : t("notDetected");
+  $("#s-config").textContent = env ? t("configPath", { path: env.configFile }) : "";
   $<HTMLDialogElement>("#dlg-settings").showModal();
 }
 
@@ -393,8 +392,8 @@ async function pickClaude() {
     multiple: false,
     directory: isMac, // .app bundles are directories; the dialog lets you select them
     defaultPath: isMac ? "/Applications" : undefined,
-    title: "Select Claude Desktop",
-    filters: isMac ? undefined : [{ name: "Executable", extensions: ["exe"] }],
+    title: t("selectClaude"),
+    filters: isMac ? undefined : [{ name: t("executable"), extensions: ["exe"] }],
   });
   if (typeof picked === "string") $<HTMLInputElement>("#s-claude").value = picked;
 }
@@ -404,10 +403,13 @@ async function saveSettings(e: Event) {
   const v = $<HTMLInputElement>("#s-claude").value.trim();
   config.claudePath = v || null;
   config.shortcutsEnabled = $<HTMLInputElement>("#s-shortcuts").checked;
+  config.language = $<HTMLSelectElement>("#s-lang").value as LangSetting;
   try {
     await persist();
     $<HTMLDialogElement>("#dlg-settings").close();
-    toast("Settings saved");
+    setLang(resolveLang(config.language));
+    render();
+    toast(t("settingsSaved"));
   } catch (err) {
     toast(String(err), true);
   }
@@ -418,7 +420,7 @@ async function importInstances() {
     const before = config.instances.length;
     config = await invoke<Config>("import_instances");
     const added = config.instances.length - before;
-    toast(added > 0 ? `${added} instance(s) imported` : "No new folders to import");
+    toast(added > 0 ? t("importedFolders", { n: added }) : t("noNewFolders"));
     render();
     refreshRunning();
   } catch (err) {
@@ -445,14 +447,14 @@ function backupFileName(): string {
 
 async function exportConfig() {
   const path = await saveDialog({
-    title: "Export configuration",
+    title: t("exportTitle"),
     defaultPath: backupFileName(),
     filters: [{ name: "JSON", extensions: ["json"] }],
   });
   if (typeof path !== "string") return;
   try {
     const n = await invoke<number>("export_config", { path });
-    toast(`Exported ${n} instance(s)`);
+    toast(t("exported", { n }));
   } catch (e) {
     toast(String(e), true);
   }
@@ -462,20 +464,22 @@ async function importConfig() {
   const path = await openDialog({
     multiple: false,
     directory: false,
-    title: "Import configuration",
+    title: t("importTitle"),
     filters: [{ name: "JSON", extensions: ["json"] }],
   });
   if (typeof path !== "string") return;
-  const replace = !(await ask(
-    "Merge the backup into the current list, or replace the list with the backup?\n\nFolders that already exist are skipped when merging.",
-    { title: "Import configuration", kind: "warning", okLabel: "Merge", cancelLabel: "Replace" },
-  ));
+  const replace = !(await ask(t("mergeOrReplace"), {
+    title: t("importTitle"),
+    kind: "warning",
+    okLabel: t("merge"),
+    cancelLabel: t("replace"),
+  }));
   if (replace) {
-    const sure = await ask("Replace all current instances with the backup? Data folders are not touched.", {
-      title: "Replace configuration",
+    const sure = await ask(t("replaceConfirm"), {
+      title: t("replaceTitle"),
       kind: "warning",
-      okLabel: "Replace",
-      cancelLabel: "Cancel",
+      okLabel: t("replace"),
+      cancelLabel: t("cancel"),
     });
     if (!sure) return;
   }
@@ -489,8 +493,8 @@ async function importConfig() {
     refreshRunning();
     toast(
       replace
-        ? `Imported ${result.added} instance(s)`
-        : `Imported ${result.added} instance(s), ${result.skipped} already present`,
+        ? t("importedReplace", { n: result.added })
+        : t("importedMerge", { n: result.added, s: result.skipped }),
     );
   } catch (e) {
     toast(String(e), true);
@@ -503,7 +507,7 @@ async function openAbout() {
   try {
     const info = await invoke<AppInfo>("app_info");
     $("#about-name").textContent = info.name;
-    $("#about-version").textContent = `Version ${info.version}`;
+    $("#about-version").textContent = t("version", { v: info.version });
     $("#about-author").textContent = info.author;
     const link = $<HTMLAnchorElement>("#about-link");
     link.textContent = info.repoUrl.replace(/^https?:\/\//, "");
@@ -527,6 +531,7 @@ async function init() {
   } catch (e) {
     toast(String(e), true);
   }
+  setLang(resolveLang(config.language));
   render();
   await refreshRunning();
   // The backend watches the process list and pushes changes (it also keeps the tray menu current).
@@ -566,7 +571,7 @@ async function init() {
   $("#btn-open-root").addEventListener("click", openRoot);
   $("#btn-about").addEventListener("click", openAbout);
   $("#btn-export").addEventListener("click", exportConfig);
-  $("#btn-import").addEventListener("click", importConfig);
+  $("#btn-import-json").addEventListener("click", importConfig);
 
   // No context menu anywhere: the webview's native menu (reload, inspect, copy) has no use here.
   document.addEventListener("contextmenu", (e) => e.preventDefault());

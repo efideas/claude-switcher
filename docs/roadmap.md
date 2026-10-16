@@ -2,12 +2,12 @@
 
 Planned work, roughly in order. Items move to the changelog in the release notes when they ship.
 
-## In progress
+## Shipped in 0.3.0
 
-- [ ] **Export and import the configuration.** A JSON backup of `config.json` (instances, icons, colors, Claude path) from Settings, and an import that merges or replaces the current list.
-- [ ] **Active instance in the tray.** While a Claude window is frontmost, the menu bar shows the name of the instance it belongs to, so you know which organization you are working in without checking the Dock. Windows shows it in the tray tooltip.
-- [ ] **Global shortcuts.** Ctrl+Alt+1 to 9 bring instance N to the front from any app (Ctrl+Alt+0 for the regular profile). Can be turned off in Settings.
-- [ ] **Languages.** English and Spanish for the window and the tray menu, following the system language with an override in Settings.
+- Export and import of the configuration as JSON.
+- Active instance shown in the tray and outlined in the window.
+- Global shortcuts Ctrl+Alt+0..9.
+- English and Spanish.
 
 ## Later
 

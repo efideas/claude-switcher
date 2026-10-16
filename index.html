@@ -14,16 +14,16 @@
         <span class="brand-name">Claude Switcher</span>
       </div>
       <div class="topbar-actions">
-        <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
-        <button id="btn-add" class="icon-btn primary" title="Add instance" aria-label="Add instance">+</button>
+        <button id="btn-settings" class="icon-btn" data-i18n-title="settings">⚙</button>
+        <button id="btn-add" class="icon-btn primary" data-i18n-title="addInstance">+</button>
       </div>
     </header>
 
     <main>
       <section id="grid" class="grid" aria-live="polite"></section>
       <section id="empty" class="empty hidden">
-        <p class="empty-title">No instances yet</p>
-        <p class="empty-hint">Add one with <strong>+</strong>. Each instance opens Claude with its own data folder, so you can sign in with a different account in each one.</p>
+        <p class="empty-title" data-i18n="noInstances">No instances yet</p>
+        <p class="empty-hint" data-i18n-html="emptyHint"></p>
       </section>
     </main>
 
@@ -39,18 +39,18 @@
         <div class="icon-row">
           <div id="icon-preview" class="card-icon big"></div>
           <div class="icon-row-actions">
-            <button type="button" id="btn-pick-icon" class="btn">Choose image…</button>
-            <button type="button" id="btn-clear-icon" class="btn ghost">Remove</button>
+            <button type="button" id="btn-pick-icon" class="btn" data-i18n="chooseImage">Choose image…</button>
+            <button type="button" id="btn-clear-icon" class="btn ghost" data-i18n="remove">Remove</button>
           </div>
         </div>
 
         <label>
-          <span>Name</span>
+          <span data-i18n="name">Name</span>
           <input id="f-name" type="text" required placeholder="Acme" autocomplete="off" />
         </label>
 
         <label>
-          <span>Data folder (<code>--user-data-dir</code>)</span>
+          <span data-i18n-html="dataFolder"></span>
           <div class="input-with-btn">
             <input id="f-dir" type="text" required spellcheck="false" />
             <button type="button" id="btn-pick-dir" class="btn">…</button>
@@ -58,15 +58,15 @@
         </label>
 
         <div class="field">
-          <span>Color</span>
+          <span data-i18n="color">Color</span>
           <div id="swatches" class="swatches"></div>
         </div>
 
         <div class="dlg-actions">
-          <button type="button" id="btn-delete" class="btn danger ghost">Delete</button>
+          <button type="button" id="btn-delete" class="btn danger ghost" data-i18n="delete">Delete</button>
           <span class="spacer"></span>
-          <button type="button" id="btn-cancel" class="btn ghost">Cancel</button>
-          <button type="submit" id="btn-save" class="btn primary">Save</button>
+          <button type="button" id="btn-cancel" class="btn ghost" data-i18n="cancel">Cancel</button>
+          <button type="submit" id="btn-save" class="btn primary" data-i18n="save">Save</button>
         </div>
       </form>
     </dialog>
@@ -74,51 +74,60 @@
     <!-- Settings -->
     <dialog id="dlg-settings">
       <form method="dialog" id="form-settings">
-        <h2>Settings</h2>
+        <h2 data-i18n="settings">Settings</h2>
 
         <label>
-          <span>Claude Desktop path</span>
+          <span data-i18n="claudePath">Claude Desktop path</span>
           <div class="input-with-btn">
-            <input id="s-claude" type="text" spellcheck="false" placeholder="Auto-detect" />
+            <input id="s-claude" type="text" spellcheck="false" data-i18n-placeholder="autoDetect" />
             <button type="button" id="btn-pick-claude" class="btn">…</button>
           </div>
           <small id="s-detected" class="muted"></small>
         </label>
 
+        <label>
+          <span data-i18n="language">Language</span>
+          <select id="s-lang">
+            <option value="system" data-i18n="langSystem">System</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+        </label>
+
         <div class="field">
-          <span>Folders</span>
+          <span data-i18n="folders">Folders</span>
           <div class="btn-row">
-            <button type="button" id="btn-import" class="btn">Import from ~/.claude-instances</button>
-            <button type="button" id="btn-open-root" class="btn">Open folder</button>
+            <button type="button" id="btn-import" class="btn" data-i18n="importFolders">Import from ~/.claude-instances</button>
+            <button type="button" id="btn-open-root" class="btn" data-i18n="openFolder">Open folder</button>
           </div>
           <small id="s-config" class="muted"></small>
         </div>
 
         <label class="check">
           <input id="s-shortcuts" type="checkbox" />
-          <span>Global shortcuts: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd> bring instance N to the front from any app, <kbd>0</kbd> the regular profile (Control+Option on macOS)</span>
+          <span data-i18n-html="shortcutsLabel"></span>
         </label>
 
         <div class="field">
-          <span>Backup</span>
+          <span data-i18n="backup">Backup</span>
           <div class="btn-row">
-            <button type="button" id="btn-export" class="btn">Export JSON…</button>
-            <button type="button" id="btn-import" class="btn">Import JSON…</button>
+            <button type="button" id="btn-export" class="btn" data-i18n="exportJson">Export JSON…</button>
+            <button type="button" id="btn-import-json" class="btn" data-i18n="importJson">Import JSON…</button>
           </div>
-          <small class="muted">Instances, icons, colors and the Claude path. Importing can merge or replace the current list.</small>
+          <small class="muted" data-i18n="backupHint"></small>
         </div>
 
         <div class="field">
-          <span>About</span>
+          <span data-i18n="about">About</span>
           <div class="btn-row">
-            <button type="button" id="btn-about" class="btn">About Claude Switcher</button>
+            <button type="button" id="btn-about" class="btn" data-i18n="aboutApp">About Claude Switcher</button>
           </div>
         </div>
 
         <div class="dlg-actions">
           <span class="spacer"></span>
-          <button type="button" id="btn-settings-cancel" class="btn ghost">Cancel</button>
-          <button type="submit" class="btn primary">Save</button>
+          <button type="button" id="btn-settings-cancel" class="btn ghost" data-i18n="cancel">Cancel</button>
+          <button type="submit" class="btn primary" data-i18n="save">Save</button>
         </div>
       </form>
     </dialog>
@@ -128,16 +137,16 @@
       <form method="dialog">
         <img src="/icon.png" alt="" class="about-icon" width="72" height="72" />
         <h2 id="about-name">Claude Switcher</h2>
-        <p id="about-version" class="muted">Version</p>
-        <p class="about-desc">Opens several Claude Desktop instances, one per organization or account.</p>
+        <p id="about-version" class="muted"></p>
+        <p class="about-desc" data-i18n="aboutDesc"></p>
         <p class="about-meta">
-          <span>Author: <strong id="about-author"></strong></span>
+          <span><span data-i18n="author">Author:</span> <strong id="about-author"></strong></span>
           <a id="about-link" href="#"></a>
         </p>
-        <p class="about-note muted">Unofficial. Not affiliated with Anthropic.</p>
+        <p class="about-note muted" data-i18n="unofficial"></p>
         <div class="dlg-actions">
           <span class="spacer"></span>
-          <button type="submit" class="btn primary">Close</button>
+          <button type="submit" class="btn primary" data-i18n="close">Close</button>
         </div>
       </form>
     </dialog>

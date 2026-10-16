@@ -288,3 +288,15 @@ label.check { flex-direction: row; align-items: flex-start; gap: 10px; }
 label.check > span { font-size: 13px; color: var(--fg); line-height: 1.4; }
 label.check input { margin-top: 3px; accent-color: var(--accent); }
 kbd { font: 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); }
+
+/* Language select */
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+select:focus { outline: none; border-color: var(--accent); }

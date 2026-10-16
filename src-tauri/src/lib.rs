@@ -21,7 +21,38 @@ const REPO_URL: &str = "https://github.com/efideas/claude-switcher";
 const TRAY_ID: &str = "main-tray";
 /// Pseudo instance id for the regular Claude profile (launched with no --user-data-dir).
 const DEFAULT_ID: &str = "__default__";
-const DEFAULT_LABEL: &str = "Claude (default profile)";
+
+/// Languages the tray menu speaks. Everything else falls back to English.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lang {
+    En,
+    Es,
+}
+
+fn ui_lang(config: &Config) -> Lang {
+    let tag = match config.language.as_str() {
+        "system" | "" => sys_locale::get_locale().unwrap_or_default(),
+        other => other.to_string(),
+    };
+    if tag.to_ascii_lowercase().starts_with("es") { Lang::Es } else { Lang::En }
+}
+
+fn tr(lang: Lang, key: &str) -> String {
+    let s = match (lang, key) {
+        (Lang::Es, "default") => "Claude (perfil normal)",
+        (Lang::Es, "none") => "Aún no hay instancias",
+        (Lang::Es, "open") => "Abrir Claude Switcher",
+        (Lang::Es, "about") => "Acerca de Claude Switcher",
+        (Lang::Es, "quit") => "Salir de Claude Switcher",
+        (_, "default") => "Claude (default profile)",
+        (_, "none") => "No instances yet",
+        (_, "open") => "Open Claude Switcher",
+        (_, "about") => "About Claude Switcher",
+        (_, "quit") => "Quit Claude Switcher",
+        _ => key,
+    };
+    s.to_string()
+}
 
 const PALETTE: [&str; 8] = [
     "#e5533d", "#e0a526", "#3fb950", "#2fb3a8", "#3b82f6", "#8b5cf6", "#ec4899", "#f97316",
@@ -49,6 +80,13 @@ pub struct Config {
     /// Ctrl+Alt+0..9 (Control+Option on macOS) bring instance N to the front from any app.
     #[serde(default = "default_true")]
     pub shortcuts_enabled: bool,
+    /// "system", "en" or "es". Drives the tray menu; the window reads the same value.
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "system".into()
 }
 
 fn default_true() -> bool {
@@ -57,7 +95,12 @@ fn default_true() -> bool {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { claude_path: None, instances: Vec::new(), shortcuts_enabled: true }
+        Config {
+            claude_path: None,
+            instances: Vec::new(),
+            shortcuts_enabled: true,
+            language: default_language(),
+        }
     }
 }
 
@@ -654,9 +697,10 @@ fn read_icon(path: String) -> Result<String, String> {
 /// Tray menu: one entry per instance (a filled dot marks the running ones), then app actions.
 fn build_tray_menu(app: &AppHandle, running: &HashMap<String, u32>) -> tauri::Result<Menu<tauri::Wry>> {
     let config = read_config(app).unwrap_or_default();
+    let lang = ui_lang(&config);
     let menu = Menu::new(app)?;
     if config.instances.is_empty() {
-        menu.append(&MenuItem::with_id(app, "none", "No instances yet", false, None::<&str>)?)?;
+        menu.append(&MenuItem::with_id(app, "none", tr(lang, "none"), false, None::<&str>)?)?;
     }
     for inst in &config.instances {
         let marker = if running.contains_key(&inst.id) { "●" } else { "○" };
@@ -674,15 +718,15 @@ fn build_tray_menu(app: &AppHandle, running: &HashMap<String, u32>) -> tauri::Re
     menu.append(&MenuItem::with_id(
         app,
         format!("inst:{DEFAULT_ID}"),
-        format!("{marker}  {DEFAULT_LABEL}"),
+        format!("{marker}  {}", tr(lang, "default")),
         true,
         None::<&str>,
     )?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
-    menu.append(&MenuItem::with_id(app, "show", format!("Open {APP_NAME}"), true, None::<&str>)?)?;
-    menu.append(&MenuItem::with_id(app, "about", format!("About {APP_NAME}"), true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "show", tr(lang, "open"), true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "about", tr(lang, "about"), true, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
-    menu.append(&MenuItem::with_id(app, "quit", format!("Quit {APP_NAME}"), true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "quit", tr(lang, "quit"), true, None::<&str>)?)?;
     Ok(menu)
 }
 
@@ -1091,6 +1135,7 @@ mod tests {
         let mut config = Config {
             claude_path: None,
             shortcuts_enabled: true,
+            language: "en".into(),
             instances: vec![
                 inst("18decadf62f01ca8", "/a"),
                 inst("18decadf62f02090", "/b"),
@@ -1115,6 +1160,7 @@ mod tests {
         let mut config = Config {
             claude_path: None,
             shortcuts_enabled: true,
+            language: "en".into(),
             instances: vec![inst("a", "/a"), inst("b", "/b")],
         };
         assert!(!repair_ids(&mut config));

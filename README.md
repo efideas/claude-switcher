@@ -27,6 +27,10 @@ That is all it does. It never touches the Claude app itself, your `~/.claude` fo
 - A built-in "Claude" card (key `0`) and tray entry open the regular profile, with no `--user-data-dir`. Useful because once an instance is running, clicking Claude in the Dock or Start menu only brings that instance forward instead of opening the regular app.
 - Lives in the menu bar (macOS) or system tray (Windows). Closing the window keeps the app running there; click the tray icon to pick an instance, reopen the window, or quit. On macOS the Dock icon disappears while the window is closed.
 - About dialog with version, author and repository link, in the app and in the tray menu.
+- The menu bar shows the name of the instance whose Claude window is frontmost (tooltip on Windows), and the matching card is outlined.
+- Global shortcuts: Ctrl+Alt+1 to 9 (Control+Option on macOS) bring instance N to the front from any app, Ctrl+Alt+0 the regular profile. Can be turned off in Settings.
+- Export the configuration to a JSON file and import it back, merging or replacing the list.
+- English and Spanish, following the system language, with an override in Settings.
 - Imports any folders already present in `~/.claude-instances` on first run.
 - Detects the Claude install path on both platforms; you can override it in Settings.
 - Configuration lives in a single `config.json` under the OS app-config directory. The path is shown in Settings.
