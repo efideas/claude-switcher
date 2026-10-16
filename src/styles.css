@@ -273,3 +273,8 @@ dialog.about form { align-items: center; text-align: center; gap: 8px; }
 .about-meta a:hover { text-decoration: underline; }
 .about-note { margin: 0; font-size: 12px; }
 dialog.about .dlg-actions { width: 100%; }
+
+/* Built-in default-profile card */
+.card.default { border-style: dashed; }
+.card.default .card-icon { font-size: 30px; }
+.card-sub { font-size: 11px; color: var(--fg-muted); margin-top: -6px; }

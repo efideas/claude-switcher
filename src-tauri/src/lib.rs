@@ -19,6 +19,9 @@ const APP_NAME: &str = "Claude Switcher";
 const AUTHOR: &str = "Juan Manuel";
 const REPO_URL: &str = "https://github.com/efideas/claude-switcher";
 const TRAY_ID: &str = "main-tray";
+/// Pseudo instance id for the regular Claude profile (launched with no --user-data-dir).
+const DEFAULT_ID: &str = "__default__";
+const DEFAULT_LABEL: &str = "Claude (default profile)";
 
 const PALETTE: [&str; 8] = [
     "#e5533d", "#e0a526", "#3fb950", "#2fb3a8", "#3b82f6", "#8b5cf6", "#ec4899", "#f97316",
@@ -326,8 +329,42 @@ fn normalize_dir(d: &str) -> String {
 }
 
 /// Map instance id -> lowest pid of a process started with that user-data-dir.
+/// The regular profile appears under DEFAULT_ID when Claude runs without the flag.
 fn running_map(config: &Config) -> HashMap<String, u32> {
-    match_running(&config.instances, &claude_processes())
+    let procs = claude_processes();
+    let mut map = match_running(&config.instances, &procs);
+    if let Ok(claude) = resolve_claude_path(config) {
+        if let Some(pid) = default_profile_pid(&procs, &claude_main_binary(&claude)) {
+            map.insert(DEFAULT_ID.to_string(), pid);
+        }
+    }
+    map
+}
+
+/// The executable that shows up in the process list for the given install path.
+fn claude_main_binary(claude_path: &str) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        return format!("{}/Contents/MacOS/Claude", claude_path.trim_end_matches('/'));
+    }
+    #[allow(unreachable_code)]
+    claude_path.to_string()
+}
+
+/// Lowest pid of the main Claude process running on the regular profile:
+/// the command line starts with the main binary and has neither --user-data-dir
+/// nor a --type= flag (which marks helper processes).
+fn default_profile_pid(procs: &[(u32, String)], main_binary: &str) -> Option<u32> {
+    let bin = normalize_dir(main_binary);
+    let mut best: Option<u32> = None;
+    for (pid, args) in procs {
+        let hay = normalize_dir(args);
+        let hay = hay.trim_start_matches('"');
+        if hay.starts_with(&bin) && !hay.contains("--user-data-dir") && !hay.contains("--type=") {
+            best = Some(best.map_or(*pid, |b: u32| b.min(*pid)));
+        }
+    }
+    best
 }
 
 fn match_running(instances: &[Instance], procs: &[(u32, String)]) -> HashMap<String, u32> {
@@ -435,15 +472,21 @@ fn running_instances(app: AppHandle) -> Result<Vec<String>, String> {
 #[tauri::command]
 fn launch_instance(app: AppHandle, id: String) -> Result<String, String> {
     let config = read_config(&app)?;
-    let inst = config
-        .instances
-        .iter()
-        .find(|i| i.id == id)
-        .ok_or("Instance not found")?;
-    let dir = PathBuf::from(&inst.dir);
-    fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
     let claude = resolve_claude_path(&config)?;
-    let flag = format!("--user-data-dir={}", dir.display());
+
+    // The regular profile has no data-dir flag; everything else needs its folder.
+    let flag: Option<String> = if id == DEFAULT_ID {
+        None
+    } else {
+        let inst = config
+            .instances
+            .iter()
+            .find(|i| i.id == id)
+            .ok_or("Instance not found")?;
+        let dir = PathBuf::from(&inst.dir);
+        fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+        Some(format!("--user-data-dir={}", dir.display()))
+    };
 
     // Already running? Focus instead of spawning a duplicate on the same profile.
     if let Some(pid) = running_map(&config).get(&id) {
@@ -453,15 +496,21 @@ fn launch_instance(app: AppHandle, id: String) -> Result<String, String> {
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
-            .args(["-n", "-a", &claude, "--args", &flag])
-            .spawn()
-            .map_err(|e| format!("Could not open Claude: {e}"))?;
+        // `open -n` forces a new process even when another Claude (an instance) is running;
+        // plain `open -a` would only bring that one to the front.
+        let mut cmd = Command::new("open");
+        cmd.args(["-n", "-a", &claude]);
+        if let Some(flag) = &flag {
+            cmd.args(["--args", flag]);
+        }
+        cmd.spawn().map_err(|e| format!("Could not open Claude: {e}"))?;
     }
     #[cfg(not(target_os = "macos"))]
     {
         let mut cmd = Command::new(&claude);
-        cmd.arg(&flag);
+        if let Some(flag) = &flag {
+            cmd.arg(flag);
+        }
         hide_console(&mut cmd);
         cmd.spawn().map_err(|e| format!("Could not open Claude ({claude}): {e}"))?;
     }
@@ -546,6 +595,15 @@ fn build_tray_menu(app: &AppHandle, running: &HashMap<String, u32>) -> tauri::Re
         )?;
         menu.append(&item)?;
     }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    let marker = if running.contains_key(DEFAULT_ID) { "●" } else { "○" };
+    menu.append(&MenuItem::with_id(
+        app,
+        format!("inst:{DEFAULT_ID}"),
+        format!("{marker}  {DEFAULT_LABEL}"),
+        true,
+        None::<&str>,
+    )?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, "show", format!("Open {APP_NAME}"), true, None::<&str>)?)?;
     menu.append(&MenuItem::with_id(app, "about", format!("About {APP_NAME}"), true, None::<&str>)?)?;
@@ -773,6 +831,24 @@ mod tests {
         // Quoted values with spaces are matched via the quoted form.
         let m = match_running(&instances, &procs);
         assert_eq!(m.get("a"), Some(&7));
+    }
+
+    #[test]
+    fn default_profile_is_the_main_binary_without_flags() {
+        let bin = "/Applications/Claude.app/Contents/MacOS/Claude";
+        let procs = vec![
+            (300, "/Applications/Claude.app/Contents/MacOS/Claude --user-data-dir=/Users/me/.claude-instances/work".to_string()),
+            (310, "/Applications/Claude.app/Contents/Frameworks/Claude Helper (Renderer).app/Contents/MacOS/Claude Helper (Renderer) --type=renderer".to_string()),
+            (200, "/Applications/Claude.app/Contents/MacOS/Claude".to_string()),
+            (210, "/Applications/Claude.app/Contents/MacOS/Claude --type=utility --user-data-dir=/x".to_string()),
+        ];
+        assert_eq!(default_profile_pid(&procs, bin), Some(200));
+        let only_instances = vec![procs[0].clone(), procs[1].clone()];
+        assert_eq!(default_profile_pid(&only_instances, bin), None);
+        // Windows-style quoted command line.
+        let win = vec![(7, "\"C:\\Users\\me\\AppData\\Local\\AnthropicClaude\\claude.exe\"".to_string())];
+        let hit = default_profile_pid(&win, "C:\\Users\\me\\AppData\\Local\\AnthropicClaude\\claude.exe");
+        assert_eq!(hit, Some(7));
     }
 
     #[test]

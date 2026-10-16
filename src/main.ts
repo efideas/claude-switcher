@@ -38,6 +38,16 @@ const PALETTE = ["#e5533d", "#e0a526", "#3fb950", "#2fb3a8", "#3b82f6", "#8b5cf6
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
+// The regular Claude profile (no --user-data-dir). Known to the backend under this id.
+const DEFAULT_ID = "__default__";
+const DEFAULT_INSTANCE: Instance = {
+  id: DEFAULT_ID,
+  name: "Claude",
+  dir: "",
+  icon: null,
+  color: "#D97757",
+};
+
 let config: Config = { claudePath: null, instances: [] };
 let env: Environment | null = null;
 let running = new Set<string>();
@@ -91,11 +101,60 @@ async function persist() {
 
 // ---------- rendering ----------
 
+function buildDefaultCard(): HTMLElement {
+  const inst = DEFAULT_INSTANCE;
+  const isRunning = running.has(inst.id);
+  const card = document.createElement("div");
+  card.className = "card default" + (isRunning ? " running" : "");
+  card.tabIndex = 0;
+  card.dataset.id = inst.id;
+  card.title = isRunning
+    ? "Claude · regular profile · running"
+    : "Claude · regular profile (no --user-data-dir)";
+
+  const dot = document.createElement("span");
+  dot.className = "card-dot";
+  card.appendChild(dot);
+
+  const icon = document.createElement("div");
+  icon.className = "card-icon";
+  icon.style.background = inst.color;
+  icon.textContent = "✳";
+  card.appendChild(icon);
+
+  const name = document.createElement("div");
+  name.className = "card-name";
+  name.textContent = inst.name;
+  card.appendChild(name);
+
+  const sub = document.createElement("div");
+  sub.className = "card-sub";
+  sub.textContent = "default";
+  card.appendChild(sub);
+
+  const key = document.createElement("span");
+  key.className = "card-key";
+  key.textContent = "0";
+  card.appendChild(key);
+
+  card.addEventListener("click", () => launch(inst, card));
+  card.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      launch(inst, card);
+    }
+  });
+  return card;
+}
+
 function render() {
   const grid = $<HTMLElement>("#grid");
   const empty = $<HTMLElement>("#empty");
   grid.innerHTML = "";
   empty.classList.toggle("hidden", config.instances.length > 0);
+
+  // Built-in card for the regular profile, always first, launched with key 0.
+  grid.appendChild(buildDefaultCard());
 
   config.instances.forEach((inst, idx) => {
     const card = document.createElement("div");
@@ -142,7 +201,7 @@ function render() {
     grid.appendChild(card);
   });
 
-  const n = running.size;
+  const n = [...running].filter((id) => id !== DEFAULT_ID).length;
   setStatus(
     config.instances.length === 0
       ? ""
@@ -442,6 +501,11 @@ async function init() {
     if (document.querySelector("dialog[open]")) return;
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const n = Number(e.key);
+    if (e.key === "0") {
+      const card = document.querySelector<HTMLElement>(`.card[data-id="${DEFAULT_ID}"]`) ?? undefined;
+      launch(DEFAULT_INSTANCE, card);
+      return;
+    }
     if (n >= 1 && n <= 9 && config.instances[n - 1]) {
       const inst = config.instances[n - 1];
       const card = document.querySelector<HTMLElement>(`.card[data-id="${inst.id}"]`) ?? undefined;

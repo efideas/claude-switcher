@@ -24,6 +24,7 @@ That is all it does. It never touches the Claude app itself, your `~/.claude` fo
 - Cards with a custom image or colored initials. Click to launch.
 - A green dot marks instances that are already running. Clicking one brings its window to the front instead of opening a duplicate.
 - Keys `1` to `9` launch the Nth card.
+- A built-in "Claude" card (key `0`) and tray entry open the regular profile, with no `--user-data-dir`. Useful because once an instance is running, clicking Claude in the Dock or Start menu only brings that instance forward instead of opening the regular app.
 - Lives in the menu bar (macOS) or system tray (Windows). Closing the window keeps the app running there; click the tray icon to pick an instance, reopen the window, or quit. On macOS the Dock icon disappears while the window is closed.
 - About dialog with version, author and repository link, in the app and in the tray menu.
 - Imports any folders already present in `~/.claude-instances` on first run.

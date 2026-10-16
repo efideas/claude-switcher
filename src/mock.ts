@@ -15,7 +15,7 @@ export function installMockIfNeeded() {
       { id: "d", name: "Initech", dir: "/Users/demo/.claude-instances/initech", icon: null, color: "#e0a526" },
     ],
   };
-  const running = new Set<string>(["b"]);
+  const running = new Set<string>(["b", "__default__"]);
 
   const handlers: Record<string, Handler> = {
     get_environment: () => ({
