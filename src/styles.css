@@ -278,3 +278,7 @@ dialog.about .dlg-actions { width: 100%; }
 .card.default { border-style: dashed; }
 .card.default .card-icon { font-size: 30px; }
 .card-sub { font-size: 11px; color: var(--fg-muted); margin-top: -6px; }
+
+/* Card whose Claude window is frontmost */
+.card.active { border-color: var(--accent); }
+.card.active .card-name::after { content: " ·"; color: var(--accent); }

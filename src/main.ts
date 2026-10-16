@@ -51,6 +51,7 @@ const DEFAULT_INSTANCE: Instance = {
 let config: Config = { claudePath: null, instances: [] };
 let env: Environment | null = null;
 let running = new Set<string>();
+let activeId: string | null = null; // instance that owns the frontmost Claude window
 let editing: Instance | null = null; // null => creating
 let draft: Instance | null = null;
 let dirTouched = false;
@@ -105,7 +106,7 @@ function buildDefaultCard(): HTMLElement {
   const inst = DEFAULT_INSTANCE;
   const isRunning = running.has(inst.id);
   const card = document.createElement("div");
-  card.className = "card default" + (isRunning ? " running" : "");
+  card.className = "card default" + (isRunning ? " running" : "") + (activeId === inst.id ? " active" : "");
   card.tabIndex = 0;
   card.dataset.id = inst.id;
   card.title = isRunning
@@ -158,7 +159,8 @@ function render() {
 
   config.instances.forEach((inst, idx) => {
     const card = document.createElement("div");
-    card.className = "card" + (running.has(inst.id) ? " running" : "");
+    card.className =
+      "card" + (running.has(inst.id) ? " running" : "") + (activeId === inst.id ? " active" : "");
     card.tabIndex = 0;
     card.dataset.id = inst.id;
     card.title = running.has(inst.id) ? `${inst.name} · running\n${inst.dir}` : `${inst.name}\n${inst.dir}`;
@@ -527,6 +529,12 @@ async function init() {
   // The backend watches the process list and pushes changes (it also keeps the tray menu current).
   listen<string[]>("running-changed", (e) => applyRunning(e.payload)).catch(() => {});
   listen<string>("launch-error", (e) => toast(e.payload, true)).catch(() => {});
+  listen<string | null>("active-changed", (e) => {
+    if (e.payload !== activeId) {
+      activeId = e.payload;
+      render();
+    }
+  }).catch(() => {});
   listen("open-about", () => openAbout()).catch(() => {});
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refreshRunning();

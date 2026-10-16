@@ -737,23 +737,91 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Polls the process list and, when the set of running instances changes,
-/// updates the tray menu and tells the window.
+/// Pid of the application that owns the frontmost window, if the OS tells us.
+fn frontmost_pid() -> Option<u32> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::NSWorkspace;
+        let ws = NSWorkspace::sharedWorkspace();
+        let app = ws.frontmostApplication()?;
+        return u32::try_from(app.processIdentifier()).ok();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+        let hwnd = unsafe { GetForegroundWindow() };
+        if hwnd.is_null() {
+            return None;
+        }
+        let mut pid: u32 = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        return (pid != 0).then_some(pid);
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// Shows which instance owns the frontmost Claude window: as text next to the
+/// menu bar icon on macOS, in the tooltip elsewhere.
+fn set_tray_active(app: &AppHandle, name: Option<&str>) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
+    #[cfg(target_os = "macos")]
+    {
+        let _ = tray.set_title(name);
+    }
+    let tooltip = match name {
+        Some(n) => format!("{APP_NAME} · {n}"),
+        None => APP_NAME.to_string(),
+    };
+    let _ = tray.set_tooltip(Some(tooltip));
+}
+
+/// Background watcher. Every 3 s it rescans the process list and, when the set
+/// of running instances changes, refreshes the tray menu and tells the window.
+/// Every 500 ms it checks which app is frontmost and shows the matching
+/// instance name in the tray.
 fn spawn_running_watcher(app: AppHandle) {
     std::thread::spawn(move || {
-        let mut last: Vec<String> = Vec::new();
+        let mut last_ids: Vec<String> = Vec::new();
+        let mut map: HashMap<String, u32> = HashMap::new();
+        let mut names: HashMap<String, String> = HashMap::new();
+        let mut last_active: Option<String> = None;
+        let mut tick: u32 = 0;
         loop {
-            if let Ok(config) = read_config(&app) {
-                let map = running_map(&config);
-                let mut ids: Vec<String> = map.keys().cloned().collect();
-                ids.sort();
-                if ids != last {
-                    last = ids.clone();
-                    refresh_tray(&app, &map);
-                    let _ = app.emit("running-changed", ids);
+            if tick % 6 == 0 {
+                if let Ok(config) = read_config(&app) {
+                    map = running_map(&config);
+                    names = config
+                        .instances
+                        .iter()
+                        .map(|i| (i.id.clone(), i.name.clone()))
+                        .collect();
+                    let mut ids: Vec<String> = map.keys().cloned().collect();
+                    ids.sort();
+                    if ids != last_ids {
+                        last_ids = ids.clone();
+                        refresh_tray(&app, &map);
+                        let _ = app.emit("running-changed", ids);
+                    }
                 }
             }
-            std::thread::sleep(Duration::from_secs(3));
+            let active: Option<String> = frontmost_pid().and_then(|pid| {
+                map.iter().find(|(_, p)| **p == pid).map(|(id, _)| id.clone())
+            });
+            if active != last_active {
+                let label = active.as_deref().map(|id| {
+                    if id == DEFAULT_ID {
+                        "Claude".to_string()
+                    } else {
+                        names.get(id).cloned().unwrap_or_default()
+                    }
+                });
+                set_tray_active(&app, label.as_deref());
+                let _ = app.emit("active-changed", &active);
+                last_active = active;
+            }
+            tick = tick.wrapping_add(1);
+            std::thread::sleep(Duration::from_millis(500));
         }
     });
 }
