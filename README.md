@@ -31,6 +31,8 @@ That is all it does. It never touches the Claude app itself, your `~/.claude` fo
 - Global shortcuts: Ctrl+Alt+1 to 9 (Control+Option on macOS) bring instance N to the front from any app, Ctrl+Alt+0 the regular profile. Can be turned off in Settings.
 - Export the configuration to a JSON file and import it back, merging or replacing the list.
 - English and Spanish, following the system language, with an override in Settings.
+- Search, All/Running/Stopped filter, grid or list view, and a per-card menu (edit, reveal folder, quit, remove).
+- macOS: each instance gets its own Dock icon. The app launches it from an APFS clone of Claude.app (no extra disk, under a second to create) whose Finder icon is the instance avatar. Finder icons live outside the code signature, so Gatekeeper and the Keychain keep working. Can be turned off in Settings.
 - Imports any folders already present in `~/.claude-instances` on first run.
 - Detects the Claude install path on both platforms; you can override it in Settings.
 - Configuration lives in a single `config.json` under the OS app-config directory. The path is shown in Settings.

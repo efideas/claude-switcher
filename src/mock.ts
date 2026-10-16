@@ -15,6 +15,7 @@ export function installMockIfNeeded() {
     openAtLogin: false,
     showInMenuBar: true,
     view: "grid",
+    dockIcons: true,
     instances: [
       { id: "a", name: "Mgtv", dir: "/Users/demo/.claude-instances/mgtv", icon: null, color: "#E5533D", shortcut: null, lastUsed: now - 120 },
       { id: "b", name: "Paramount", dir: "/Users/demo/.claude-instances/paramount", icon: null, color: "#E0A42B", shortcut: null, lastUsed: now - 3600 },
@@ -44,6 +45,7 @@ export function installMockIfNeeded() {
       running.add(id);
       return "launched";
     },
+    set_dock_icon: () => true,
     quit_instance: (a) => { running.delete(String(a.id)); return true; },
     quit_all_instances: () => { const n = running.size; running.clear(); return n; },
     read_icon: () => "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#8b5cf6"/></svg>'),

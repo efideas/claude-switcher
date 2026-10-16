@@ -27,6 +27,7 @@ type Config = {
   openAtLogin: boolean;
   showInMenuBar: boolean;
   view: "grid" | "list";
+  dockIcons: boolean;
 };
 
 type AppInfo = { name: string; version: string; author: string; repoUrl: string };
@@ -60,6 +61,7 @@ let config: Config = {
   openAtLogin: false,
   showInMenuBar: true,
   view: "grid",
+  dockIcons: true,
 };
 let env: Environment | null = null;
 let appInfo: AppInfo | null = null;
@@ -144,6 +146,62 @@ async function persist() {
 function applyConfig(next: Config) {
   config = { ...config, ...next };
   if (config.view !== "grid" && config.view !== "list") config.view = "grid";
+}
+
+// ---------- Dock icons ----------
+
+/** Draws the instance avatar as a 512px PNG (rounded square, initials or image) for the Dock. */
+async function renderDockIcon(inst: Instance): Promise<string> {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  // macOS icons sit inside the 1024 grid with ~10% margin on each side.
+  const m = Math.round(size * 0.1);
+  const w = size - 2 * m;
+  const r = Math.round(w * 0.22);
+  ctx.beginPath();
+  ctx.roundRect(m, m, w, w, r);
+  ctx.closePath();
+  if (inst.icon) {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("image"));
+      img.src = inst.icon!;
+    });
+    ctx.save();
+    ctx.clip();
+    const scale = Math.max(w / img.width, w / img.height);
+    const dw = img.width * scale;
+    const dh = img.height * scale;
+    ctx.drawImage(img, m + (w - dw) / 2, m + (w - dh) / 2, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = inst.color || PALETTE[0];
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `700 ${Math.round(w * 0.38)}px ${getComputedStyle(document.body).fontFamily}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(initials(inst.name), size / 2, size / 2 + w * 0.02);
+  }
+  return canvas.toDataURL("image/png");
+}
+
+async function syncDockIcon(inst: Instance) {
+  if (env?.os !== "macos") return;
+  try {
+    await invoke("set_dock_icon", { id: inst.id, png: await renderDockIcon(inst) });
+  } catch {
+    /* best effort */
+  }
+}
+
+function syncAllDockIcons() {
+  if (env?.os !== "macos") return;
+  for (const inst of config.instances) void syncDockIcon(inst);
 }
 
 // ---------- rendering ----------
@@ -514,6 +572,7 @@ async function saveSheet(e: Event) {
   const created = draft;
   try {
     await persist();
+    await syncDockIcon(created);
     closeSheet();
     render();
     if (creating) await launch(created);
@@ -536,6 +595,8 @@ async function renderSettings() {
   $<HTMLSelectElement>("#s-lang").value = config.language ?? "system";
   $<HTMLInputElement>("#s-tray").checked = config.showInMenuBar !== false;
   $<HTMLInputElement>("#s-shortcuts").checked = config.shortcutsEnabled !== false;
+  $<HTMLInputElement>("#s-dock").checked = config.dockIcons !== false;
+  $("#row-dock-icons").classList.toggle("hidden", env?.os !== "macos");
   $("#s-root").textContent = env?.instancesRoot ?? "";
   $("#s-config").textContent = env?.configFile ?? "";
   $("#settings-footer").textContent = t("settingsFooter", { v: appInfo?.version ?? "" });
@@ -588,6 +649,7 @@ async function importInstances() {
   try {
     const before = config.instances.length;
     applyConfig(await invoke<Config>("import_instances"));
+    syncAllDockIcons();
     const added = config.instances.length - before;
     toast(added > 0 ? t("importedFolders", { n: added }) : t("noNewFolders"));
     render();
@@ -670,6 +732,7 @@ async function init() {
   setLang(resolveLang(config.language));
   render();
   await refreshRunning();
+  if (config.dockIcons) syncAllDockIcons();
 
   // Backend push events.
   listen<string[]>("running-changed", (e) => applyRunning(e.payload)).catch(() => {});
@@ -806,6 +869,10 @@ async function init() {
     }
   });
   $("#s-tray").addEventListener("change", (e) => void saveSettings({ showInMenuBar: (e.target as HTMLInputElement).checked }));
+  $("#s-dock").addEventListener("change", async (e) => {
+    await saveSettings({ dockIcons: (e.target as HTMLInputElement).checked });
+    if (config.dockIcons) syncAllDockIcons();
+  });
   $("#s-shortcuts").addEventListener("change", async (e) => {
     await saveSettings({ shortcutsEnabled: (e.target as HTMLInputElement).checked });
     render();

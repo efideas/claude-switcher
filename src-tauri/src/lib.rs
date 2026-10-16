@@ -104,6 +104,10 @@ pub struct Config {
     /// "grid" or "list".
     #[serde(default = "default_view")]
     pub view: String,
+    /// macOS: launch each instance from its own clone of Claude.app so the Dock
+    /// shows the instance icon. Ignored elsewhere.
+    #[serde(default = "default_true")]
+    pub dock_icons: bool,
 }
 
 fn default_view() -> String {
@@ -128,6 +132,7 @@ impl Default for Config {
             open_at_login: false,
             show_in_menu_bar: true,
             view: default_view(),
+            dock_icons: true,
         }
     }
 }
@@ -529,6 +534,21 @@ fn load_config(app: AppHandle) -> Result<Config, String> {
 
 #[tauri::command]
 fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
+    if let Ok(old) = read_config(&app) {
+        for gone in old.instances.iter().filter(|o| !config.instances.iter().any(|n| n.id == o.id)) {
+            remove_instance_files(&app, gone);
+        }
+        // A renamed instance gets a new clone path; drop the old one.
+        for o in &old.instances {
+            if let Some(n) = config.instances.iter().find(|n| n.id == o.id) {
+                if n.name != o.name {
+                    if let Ok(c) = clone_bundle(&app, o) {
+                        let _ = fs::remove_dir_all(c);
+                    }
+                }
+            }
+        }
+    }
     write_config(&app, &config)?;
     refresh_tray(&app, &running_map(&config));
     apply_shortcuts(&app, &config);
@@ -706,10 +726,20 @@ fn launch_instance(app: AppHandle, id: String) -> Result<String, String> {
 
     #[cfg(target_os = "macos")]
     {
+        // Instances launch from their own clone when Dock icons are on, so the Dock
+        // shows the instance icon; the regular profile always uses the real app.
+        let mut bundle = claude.clone();
+        if let Some(inst) = config.instances.iter().find(|i| i.id == id) {
+            if config.dock_icons {
+                if let Some(c) = ensure_clone(&app, &claude, inst) {
+                    bundle = c.to_string_lossy().to_string();
+                }
+            }
+        }
         // `open -n` forces a new process even when another Claude (an instance) is running;
         // plain `open -a` would only bring that one to the front.
         let mut cmd = Command::new("open");
-        cmd.args(["-n", "-a", &claude]);
+        cmd.args(["-n", "-a", &bundle]);
         if let Some(flag) = &flag {
             cmd.args(["--args", flag]);
         }
@@ -979,6 +1009,10 @@ fn spawn_running_watcher(app: AppHandle) {
         loop {
             if tick % 6 == 0 {
                 if let Ok(config) = read_config(&app) {
+                    #[cfg(target_os = "macos")]
+                    if config.dock_icons {
+                        rehome_strays(&app, &config);
+                    }
                     map = running_map(&config);
                     names = config
                         .instances
@@ -1070,6 +1104,204 @@ fn setup_app_menu(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])?;
     app.set_menu(menu)?;
     Ok(())
+}
+
+// ---------- per-instance Dock icons (macOS) ----------
+//
+// Each instance can run from its own APFS clone of Claude.app (`cp -Rc`: under a
+// second, no extra disk). The instance icon is applied as a Finder custom icon,
+// which lives in metadata outside the code seal, so the signature, Gatekeeper and
+// the "Claude Safe Storage" keychain item keep working. Clones are kept outside
+// Spotlight's reach so nobody launches one without its --user-data-dir.
+
+fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn icons_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let d = app_data_dir(app)?.join("icons");
+    fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    Ok(d)
+}
+
+fn clones_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let d = app_data_dir(app)?.join("apps");
+    fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    Ok(d)
+}
+
+fn icon_file(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    Ok(icons_dir(app)?.join(format!("{id}.png")))
+}
+
+fn clone_bundle(app: &AppHandle, inst: &Instance) -> Result<PathBuf, String> {
+    let safe: String = inst
+        .name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let safe = safe.trim();
+    let safe = if safe.is_empty() { inst.id.as_str() } else { safe };
+    Ok(clones_dir(app)?.join(format!("Claude {safe}.app")))
+}
+
+/// Stores the PNG the window rendered for an instance (data URL or raw base64).
+/// Returns true when the file changed, so callers know the clone icon is stale.
+#[tauri::command]
+fn set_dock_icon(app: AppHandle, id: String, png: String) -> Result<bool, String> {
+    let b64 = png.rsplit(',').next().unwrap_or(&png);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|e| format!("Bad icon data: {e}"))?;
+    if bytes.len() > 4 * 1024 * 1024 {
+        return Err("Icon is too large".into());
+    }
+    let path = icon_file(&app, &id)?;
+    if fs::read(&path).map(|old| old == bytes).unwrap_or(false) {
+        return Ok(false);
+    }
+    fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    {
+        // A changed icon must reach a running clone's bundle too.
+        if let Ok(config) = read_config(&app) {
+            if let Some(inst) = config.instances.iter().find(|i| i.id == id) {
+                if let Ok(clone) = clone_bundle(&app, inst) {
+                    if clone.exists() {
+                        let _ = apply_finder_icon(&path, &clone);
+                    }
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
+/// Removes the clone and icon of an instance that left the list.
+fn remove_instance_files(app: &AppHandle, inst: &Instance) {
+    if let Ok(p) = icon_file(app, &inst.id) {
+        let _ = fs::remove_file(p);
+    }
+    if let Ok(c) = clone_bundle(app, inst) {
+        let _ = fs::remove_dir_all(c);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_finder_icon(png: &Path, bundle: &Path) -> Result<(), String> {
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSImage, NSWorkspace, NSWorkspaceIconCreationOptions};
+    use objc2_foundation::NSString;
+    let img_path = NSString::from_str(&png.to_string_lossy());
+    let image = NSImage::initWithContentsOfFile(NSImage::alloc(), &img_path)
+        .ok_or_else(|| "Could not read the icon image".to_string())?;
+    let target = NSString::from_str(&bundle.to_string_lossy());
+    let ok = NSWorkspace::sharedWorkspace().setIcon_forFile_options(
+        Some(&image),
+        &target,
+        NSWorkspaceIconCreationOptions::empty(),
+    );
+    if ok { Ok(()) } else { Err("Finder refused the custom icon".into()) }
+}
+
+#[cfg(target_os = "macos")]
+fn has_finder_icon(bundle: &Path) -> bool {
+    bundle.join("Icon\r").exists()
+}
+
+#[cfg(target_os = "macos")]
+fn version_lt(a: &str, b: &str) -> bool {
+    let parse = |v: &str| v.split('.').map(|p| p.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    parse(a) < parse(b)
+}
+
+/// Brings the instance's clone into a good state without ever downgrading it:
+/// missing or older than /Applications -> re-clone; same version without its
+/// icon -> re-clone (a self-update replaced the bundle); ahead -> keep, re-icon.
+/// Returns the bundle to launch, or None when cloning is impossible.
+#[cfg(target_os = "macos")]
+fn ensure_clone(app: &AppHandle, claude_app: &str, inst: &Instance) -> Option<PathBuf> {
+    let clone = clone_bundle(app, inst).ok()?;
+    let icon = icon_file(app, &inst.id).ok()?;
+    ensure_clone_at(claude_app, &clone, &icon)
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_clone_at(claude_app: &str, clone: &Path, icon: &Path) -> Option<PathBuf> {
+    if !icon.exists() {
+        return None;
+    }
+    let ov = claude_version(claude_app);
+    let cv = clone.exists().then(|| claude_version(&clone.to_string_lossy())).flatten();
+    let reclone = !clone.exists()
+        || matches!((&ov, &cv), (Some(o), Some(c)) if version_lt(c, o))
+        || (ov == cv && !has_finder_icon(clone));
+    if reclone {
+        let _ = fs::remove_dir_all(clone);
+        let ok = Command::new("/bin/cp")
+            .args(["-Rc", claude_app, &clone.to_string_lossy()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+            || Command::new("/bin/cp")
+                .args(["-R", claude_app, &clone.to_string_lossy()])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+        if !ok {
+            return None;
+        }
+    }
+    let icon_newer = fs::metadata(icon)
+        .and_then(|m| m.modified())
+        .ok()
+        .zip(fs::metadata(clone.join("Icon\r")).and_then(|m| m.modified()).ok())
+        .map(|(i, c)| i > c)
+        .unwrap_or(true);
+    if !has_finder_icon(clone) || icon_newer {
+        let _ = apply_finder_icon(icon, clone);
+    }
+    Some(clone.to_path_buf())
+}
+
+/// Clone processes running without --user-data-dir (Claude's updater relaunches
+/// the bundle by URL, and so does a click on a Dock entry): quit them and relaunch
+/// their instance properly.
+#[cfg(target_os = "macos")]
+fn rehome_strays(app: &AppHandle, config: &Config) {
+    let Ok(dir) = clones_dir(app) else { return };
+    let dir_s = dir.to_string_lossy().to_string();
+    for (pid, args) in claude_processes() {
+        if !args.starts_with(&dir_s) || args.contains("--user-data-dir") || args.contains("--type=") {
+            continue;
+        }
+        let bundle = match args.split(".app/Contents/MacOS/Claude").next() {
+            Some(b) => format!("{b}.app"),
+            None => continue,
+        };
+        let Some(inst) = config
+            .instances
+            .iter()
+            .find(|i| clone_bundle(app, i).map(|c| c.to_string_lossy() == bundle).unwrap_or(false))
+        else {
+            continue;
+        };
+        let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+        let app = app.clone();
+        let id = inst.id.clone();
+        std::thread::spawn(move || {
+            for _ in 0..20 {
+                std::thread::sleep(Duration::from_millis(250));
+                if !claude_processes().iter().any(|(p, _)| *p == pid) {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(500));
+            let _ = launch_instance(app, id);
+        });
+    }
 }
 
 // ---------- global shortcuts ----------
@@ -1225,7 +1457,8 @@ pub fn run() {
             export_config,
             import_config,
             quit_all_instances,
-            quit_instance
+            quit_instance,
+            set_dock_icon
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1304,6 +1537,36 @@ mod tests {
         assert_eq!(slots, vec![("a".to_string(), 3), ("c".to_string(), 1), ("b".to_string(), 2)]);
         assert_eq!(slot_of(&config, "b"), Some(2));
         assert_eq!(slot_of(&config, DEFAULT_ID), Some(0));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn clone_keeps_signature_and_carries_finder_icon() {
+        let claude = "/Applications/Claude.app";
+        if !Path::new(claude).exists() {
+            return;
+        }
+        let tmp = std::env::temp_dir().join(format!("cs-clone-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let icon = tmp.join("icon.png");
+        fs::copy(concat!(env!("CARGO_MANIFEST_DIR"), "/icons/128x128.png"), &icon).unwrap();
+        let clone = tmp.join("Claude Test.app");
+
+        let got = ensure_clone_at(claude, &clone, &icon).expect("clone created");
+        assert_eq!(got, clone);
+        assert!(has_finder_icon(&clone), "Finder icon file missing");
+        assert_eq!(claude_version(claude), claude_version(&clone.to_string_lossy()));
+        let verify = Command::new("/usr/bin/codesign").args(["--verify", "--deep", &clone.to_string_lossy()]).status().unwrap();
+        assert!(verify.success(), "code signature broken by the icon");
+
+        // Second call is a no-op: same bundle, icon untouched.
+        let before = fs::metadata(clone.join("Contents/Info.plist")).unwrap().modified().unwrap();
+        ensure_clone_at(claude, &clone, &icon).unwrap();
+        let after = fs::metadata(clone.join("Contents/Info.plist")).unwrap().modified().unwrap();
+        assert_eq!(before, after);
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

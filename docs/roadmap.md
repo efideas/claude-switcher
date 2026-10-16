@@ -2,6 +2,14 @@
 
 Planned work, roughly in order. Items move to the changelog in the release notes when they ship.
 
+## Shipped in 0.4.0
+
+- Window redesigned after the pen.dev mockup: search, All/Running/Stopped filter, grid and list views, card menu, last-used times, add tile, status bar.
+- New-instance sheet with live preview, image drop zone, shortcut slot picker and auto-derived data folder.
+- Settings with grouped sections, switches that save on change, open at login, show-in-menu-bar toggle, Claude version.
+- Per-instance Dock icon on macOS: each instance launches from an APFS clone of Claude.app carrying its avatar as a Finder custom icon. The signature, Gatekeeper and the Keychain item are untouched. Clones that Claude's updater relaunches without their profile are re-homed within seconds.
+- Tray: New instance, Settings, Quit all instances, shortcut hints.
+
 ## Shipped in 0.3.0
 
 - Export and import of the configuration as JSON.
@@ -11,7 +19,8 @@ Planned work, roughly in order. Items move to the changelog in the release notes
 
 ## Later
 
-- [ ] **Per-instance Dock icon (macOS).** Launch each instance from an APFS clone of Claude.app (`cp -Rc`, under a second, no extra disk) stored outside Spotlight's reach, with the instance color applied as a Finder custom icon (`NSWorkspace.setIcon`). The Finder icon lives in metadata (`com.apple.FinderInfo` plus an `Icon\r` file), not inside the code seal, so `codesign --verify`, Gatekeeper and the Keychain item "Claude Safe Storage" all keep working without re-signing; verified on macOS 27 with Claude 2.x. Open points: a watchdog to re-home clones that Claude's self-update relaunches without the flag, never re-cloning over a clone that updated itself ahead of /Applications, and a Windows equivalent (none known). Prior art: odahcam/claude-desktop-profiles.
+- [ ] **Custom menu bar popover.** Replace the native tray menu with the designed popover: avatars, running dots, shortcuts, New instance, Open, Settings, Quit all.
+
 - [ ] **Universal macOS build.** One dmg with arm64 and x86_64 so the wrong architecture cannot be installed by hand.
 - [ ] **Code signing and notarization.** Removes the Gatekeeper and SmartScreen warnings. Needs an Apple Developer account and a Windows code-signing certificate.
 - [ ] **In-app updates** with the Tauri updater plugin, once builds are signed.
